@@ -146,7 +146,7 @@ namespace Orleans
 
         private static Task<T> TaskFromCanceled<T>()
         {
-            var completion = new TaskCompletionSource<T>();
+            var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
             completion.SetCanceled();
             return completion.Task;
         }
@@ -324,7 +324,7 @@ namespace Orleans
 
         private static async Task MakeCancellable(Task task, CancellationToken cancellationToken)
         {
-            var tcs = new TaskCompletionSource<object>();
+            var tcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             using (cancellationToken.Register(() =>
                       tcs.TrySetCanceled(cancellationToken), useSynchronizationContext: false))
             {
@@ -387,7 +387,7 @@ namespace Orleans
 
         private static async Task<T> MakeCancellable<T>(Task<T> task, CancellationToken cancellationToken)
         {
-            var tcs = new TaskCompletionSource<T>();
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
             using (cancellationToken.Register(() =>
                       tcs.TrySetCanceled(cancellationToken), useSynchronizationContext: false))
             {

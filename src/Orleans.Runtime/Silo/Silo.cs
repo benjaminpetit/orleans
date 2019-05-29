@@ -679,14 +679,14 @@ namespace Orleans.Runtime
                     Thread.Sleep(pause);
                 }
 
-                await this.siloTerminatedTask.Task;
+                await this.siloTerminatedTask.Task.ConfigureAwait(false);
                 return;
             }
 
             try
             {
-                await this.scheduler.QueueTask(() => this.siloLifecycle.OnStop(cancellationToken), this.lifecycleSchedulingSystemTarget.SchedulingContext);
-                await this.SiloTerminated;
+                await this.scheduler.QueueTask(() => this.siloLifecycle.OnStop(cancellationToken), this.lifecycleSchedulingSystemTarget.SchedulingContext).ConfigureAwait(false);
+                await this.SiloTerminated.ConfigureAwait(false);
             }
             finally
             {
@@ -758,9 +758,9 @@ namespace Orleans.Runtime
                     await scheduler.QueueTask(this.membershipOracle.ShutDown, this.membershipOracleContext)
                         .WithCancellation(ct, "MembershipOracle Shutting down failed because the task was cancelled");
                     //Stop LocalGrainDirectory
-                    await scheduler.QueueTask(()=>localGrainDirectory.Stop(true), localGrainDirectory.CacheValidator.SchedulingContext)
+                    await scheduler.QueueTask(() => localGrainDirectory.Stop(true), localGrainDirectory.CacheValidator.SchedulingContext)
                         .WithCancellation(ct, "localGrainDirectory Stop failed because the task was cancelled");
-                    SafeExecute(() => catalog.DeactivateAllActivations().Wait(ct));
+                    await SafeExecuteAsync(() => catalog.DeactivateAllActivations()).WithCancellation(ct, "DeactivateAllActivations failed because the task was canceled");
                     //wait for all queued message sent to OutboundMessageQueue before MessageCenter stop and OutboundMessageQueue stop. 
                     await Task.Delay(WaitForMessageToBeQueuedForOutbound);
                 }
@@ -814,6 +814,11 @@ namespace Orleans.Runtime
         private void SafeExecute(Action action)
         {
             Utils.SafeExecute(action, logger, "Silo.Stop");
+        }
+
+        private Task SafeExecuteAsync(Func<Task> action)
+        {
+            return Utils.SafeExecuteAsync(action, logger, "Silo.Stop");
         }
 
         private void HandleProcessExit(object sender, EventArgs e)
