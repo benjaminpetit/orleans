@@ -55,8 +55,7 @@ namespace Tester.HeterogeneousSilosTests
 
         public void Dispose()
         {
-            cluster?.StopAllSilos();
-            cluster = null;
+            Task.Run(() => this.cluster?.StopAsync()).GetAwaiter().GetResult();
         }
 
         [Fact]

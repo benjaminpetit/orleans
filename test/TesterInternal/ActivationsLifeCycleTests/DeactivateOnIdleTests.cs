@@ -42,7 +42,7 @@ namespace UnitTests.ActivationsLifeCycleTests
         
         public void Dispose()
         {
-            testCluster?.StopAllSilos();
+            Task.Run(() => this.testCluster?.StopAsync()).GetAwaiter().GetResult();
             testCluster = null;
         }
 

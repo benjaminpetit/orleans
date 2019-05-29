@@ -60,7 +60,7 @@ namespace UnitTests.ActivationsLifeCycleTests
         public void Dispose()
         {
             GlobalConfiguration.ENFORCE_MINIMUM_REQUIREMENT_FOR_AGE_LIMIT = true;
-            testCluster?.StopAllSilos();
+            Task.Run(() => this.testCluster?.StopAsync()).GetAwaiter().GetResult();
             testCluster = null;
         }
 

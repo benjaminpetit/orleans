@@ -147,7 +147,7 @@ namespace UnitTests.MembershipTests
 
         public void Dispose()
         {
-            this.hostedCluster?.StopAllSilos();
+            Task.Run(() => this.hostedCluster?.StopAsync()).GetAwaiter().GetResult();
         }
     }
 }

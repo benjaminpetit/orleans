@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.ExceptionServices;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -65,7 +66,7 @@ namespace TestExtensions
         
         public virtual void Dispose()
         {
-            this.HostedCluster?.StopAllSilos();
+            Task.Run(() => this.HostedCluster?.StopAsync()).GetAwaiter().GetResult();
         }
 
         public string GetClientServiceId() => Client.ServiceProvider.GetRequiredService<IOptions<ClusterOptions>>().Value.ServiceId;

@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -7,7 +9,7 @@ using Orleans.TestingHost;
 
 namespace TestExtensions
 {
-    public class DefaultClusterFixture
+    public class DefaultClusterFixture : IDisposable
     {
         static DefaultClusterFixture()
         {
@@ -41,7 +43,7 @@ namespace TestExtensions
 
         public virtual void Dispose()
         {
-            this.HostedCluster?.StopAllSilos();
+            Task.Run(() => this.HostedCluster?.StopAsync()).GetAwaiter().GetResult();
         }
         
         public class SiloHostConfigurator : ISiloBuilderConfigurator

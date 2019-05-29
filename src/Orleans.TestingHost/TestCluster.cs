@@ -588,5 +588,11 @@ namespace Orleans.TestingHost
         {
             Console.WriteLine(GetLog());
         }
+
+        public async Task StopAsync()
+        {
+            await this.StopClusterClientAsync();
+            await this.StopAllSilosAsync();
+        }
     }
 }

@@ -21,6 +21,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -35,6 +36,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -49,6 +51,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -63,6 +66,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -77,6 +81,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -91,6 +96,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -105,6 +111,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -119,6 +126,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -133,6 +141,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -147,6 +156,7 @@ namespace Orleans.TestingHost.Tests
             var testCluster = builder.Build();
 
             await testCluster.DeployAsync();
+            await testCluster.StopAsync();
         }
     }
 
@@ -201,7 +211,7 @@ namespace Orleans.TestingHost.Tests
         }
         public void Dispose()
         {
-            this.testCluster?.StopAllSilos();
+            Task.Run(() => this.testCluster?.StopAsync()).GetAwaiter().GetResult();
         }
      }
 }

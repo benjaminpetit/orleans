@@ -253,10 +253,11 @@ namespace Tester.HeterogeneousSilosTests.UpgradeTests
             var primarySilo = this.deployedSilos[0];
             foreach (var silo in this.deployedSilos.Skip(1))
             {
+                Task.Run(() => silo.StopSiloAsync(stopGracefully: true)).GetAwaiter().GetResult();
                 silo.Dispose();
             }
             primarySilo.Dispose();
-            this.Client?.Dispose();
+            Task.Run(() => this.cluster?.StopAsync()).GetAwaiter().GetResult();
         }
     }
 }
