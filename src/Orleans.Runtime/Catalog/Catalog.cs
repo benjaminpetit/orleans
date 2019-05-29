@@ -97,6 +97,7 @@ namespace Orleans.Runtime
         private readonly ILoggerFactory loggerFactory;
         private readonly IOptions<GrainCollectionOptions> collectionOptions;
         private readonly IOptions<SiloMessagingOptions> messagingOptions;
+
         public Catalog(
             ILocalSiloDetails localSiloDetails,
             ILocalGrainDirectory grainDirectory,

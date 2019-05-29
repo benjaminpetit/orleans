@@ -77,6 +77,7 @@ namespace Orleans.Runtime
         /// <returns></returns>
         Task RemoveHandoffPartition(SiloAddress source);
 
+        // TODO RENAME
         /// <summary>
         /// Registers activations from a split partition with this directory.
         /// </summary>

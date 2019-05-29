@@ -100,6 +100,7 @@ namespace Orleans.Runtime.GrainDirectory
 
         public LocalGrainDirectory(
             ILocalSiloDetails siloDetails,
+            ActivationDirectory activationDirectory,
             OrleansTaskScheduler scheduler,
             ISiloStatusOracle siloStatusOracle,
             IMultiClusterOracle multiClusterOracle,
@@ -150,7 +151,7 @@ namespace Orleans.Runtime.GrainDirectory
 
             this.membershipSnapshot = new DirectoryMembershipSnapshot(this.log, this.MyAddress, this.seed, false, ImmutableArray<SiloAddress>.Empty, ImmutableHashSet<SiloAddress>.Empty);
             DirectoryPartition = grainDirectoryPartitionFactory();
-            HandoffManager = new GrainDirectoryHandoffManager(this, siloStatusOracle, grainFactory, grainDirectoryPartitionFactory, loggerFactory);
+            HandoffManager = new GrainDirectoryHandoffManager(this, activationDirectory, siloStatusOracle, grainFactory, grainDirectoryPartitionFactory, loggerFactory);
 
             RemoteGrainDirectory = new RemoteGrainDirectory(this, Constants.DirectoryServiceId, loggerFactory);
             CacheValidator = new RemoteGrainDirectory(this, Constants.DirectoryCacheValidatorId, loggerFactory);
@@ -304,7 +305,10 @@ namespace Orleans.Runtime.GrainDirectory
                 updated = existing.WithUpdate(existing.IsLocalDirectoryRunning, existing.Ring.Insert(index, silo), existing.Members.Add(silo));
             } while (Interlocked.CompareExchange(ref this.membershipSnapshot, updated, existing) != existing);
 
-            HandoffManager.ProcessSiloAddEvent(updated, silo);
+            if (!silo.Equals(this.MyAddress))
+            {
+                HandoffManager.ProcessSiloAddEvent(updated, silo);
+            }
 
             if (log.IsEnabled(LogLevel.Debug)) log.Debug("Silo {0} added silo {1}", MyAddress, silo);
         }
