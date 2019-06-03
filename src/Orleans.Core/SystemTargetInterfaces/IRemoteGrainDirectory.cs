@@ -77,13 +77,12 @@ namespace Orleans.Runtime
         /// <returns></returns>
         Task RemoveHandoffPartition(SiloAddress source);
 
-        // TODO RENAME
         /// <summary>
-        /// Registers activations from a split partition with this directory.
+        /// Registers multiple activations.
         /// </summary>
-        /// <param name="singleActivations">The single-activation registrations from the split partition.</param>
-        /// <param name="multiActivations">The multiple-activation registrations from the split partition.</param>
+        /// <param name="singleActivations">The single-activation registrations.</param>
+        /// <param name="multiActivations">The multiple-activation registrations.</param>
         /// <returns></returns>
-        Task AcceptSplitPartition(List<ActivationAddress> singleActivations, List<ActivationAddress> multiActivations);
+        Task AcceptExistingRegistrations(List<ActivationAddress> singleActivations, List<ActivationAddress> multiActivations);
     }
 }

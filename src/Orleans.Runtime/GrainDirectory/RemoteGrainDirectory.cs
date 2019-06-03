@@ -107,7 +107,7 @@ namespace Orleans.Runtime.GrainDirectory
             return Task.CompletedTask;
         }
 
-        public Task AcceptSplitPartition(List<ActivationAddress> singleActivations, List<ActivationAddress> multiActivations)
+        public Task AcceptExistingRegistrations(List<ActivationAddress> singleActivations, List<ActivationAddress> multiActivations)
         {
             router.HandoffManager.AcceptExistingRegistrations(singleActivations, multiActivations);
             return Task.CompletedTask;

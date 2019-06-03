@@ -17,7 +17,7 @@ namespace Orleans.Runtime.GrainDirectory
         private const int HANDOFF_CHUNK_SIZE = 500;
         private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(250);
         private const int MAX_OPERATION_DEQUEUE = 2;
-        private readonly LocalGrainDirectory localDirectory;
+        private readonly LocalGrainDirectory localGrainDirectory;
         private readonly ActivationDirectory activations;
         private readonly ISiloStatusOracle siloStatusOracle;
         private readonly IInternalGrainFactory grainFactory;
@@ -38,7 +38,7 @@ namespace Orleans.Runtime.GrainDirectory
             ILoggerFactory loggerFactory)
         {
             logger = loggerFactory.CreateLogger<GrainDirectoryHandoffManager>();
-            this.localDirectory = localGrainDirectory;
+            this.localGrainDirectory = localGrainDirectory;
             this.activations = activations;
             this.siloStatusOracle = siloStatusOracle;
             this.grainFactory = grainFactory;
@@ -50,11 +50,13 @@ namespace Orleans.Runtime.GrainDirectory
 
         internal void ProcessSiloRemoveEvent(DirectoryMembershipSnapshot membershipSnapshot, SiloAddress removedSilo)
         {
+            PurgeOldActivationEntries(membershipSnapshot);
             ReregisterAllActivations(membershipSnapshot);
         }
 
         internal void ProcessSiloAddEvent(DirectoryMembershipSnapshot membershipSnapshot, SiloAddress addedSilo)
         {
+            PurgeOldActivationEntries(membershipSnapshot);
             ReregisterAllActivations(membershipSnapshot);
         }
 
@@ -62,6 +64,11 @@ namespace Orleans.Runtime.GrainDirectory
         {
             // TODO REMOVE
             return Task.CompletedTask;
+        }
+
+        private void PurgeOldActivationEntries(DirectoryMembershipSnapshot membershipSnapshot)
+        {
+                this.localGrainDirectory.DirectoryPartition.Clear();
         }
 
         private void ReregisterAllActivations(DirectoryMembershipSnapshot membershipSnapshot)
@@ -84,7 +91,7 @@ namespace Orleans.Runtime.GrainDirectory
                         continue;
 
                     // No need to register again if we are the primary
-                    var primary = this.localDirectory.CheckIfShouldForward(activation.Grain, 0, "ReregisterAllActivations");
+                    var primary = membershipSnapshot.CalculateGrainDirectoryPartition(activation.Grain);
                     if (primary == null)
                         continue;
 
@@ -117,7 +124,7 @@ namespace Orleans.Runtime.GrainDirectory
                     if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("Sending " + singleActivations.Count + " entries to " + targetSilo);
                 }
 
-                await localDirectory.GetDirectoryReference(targetSilo).AcceptSplitPartition(singleActivations, multiActivations);
+                await localGrainDirectory.GetDirectoryReference(targetSilo).AcceptExistingRegistrations(singleActivations, multiActivations);
             }
             else
             {
@@ -135,7 +142,7 @@ namespace Orleans.Runtime.GrainDirectory
 
         private async Task AcceptExistingRegistrationsAsync(List<ActivationAddress> singleActivations, List<ActivationAddress> multiActivations)
         {
-            if (!this.localDirectory.Running) return;
+            if (!this.localGrainDirectory.Running) return;
 
             if (this.logger.IsEnabled(LogLevel.Debug))
             {
@@ -145,7 +152,7 @@ namespace Orleans.Runtime.GrainDirectory
 
             if (singleActivations != null && singleActivations.Count > 0)
             {
-                var tasks = singleActivations.Select(addr => this.localDirectory.RegisterAsync(addr, true, 1)).ToArray();
+                var tasks = singleActivations.Select(addr => this.localGrainDirectory.RegisterAsync(addr, true, 1)).ToArray();
                 try
                 {
                     await Task.WhenAll(tasks);
@@ -190,7 +197,7 @@ namespace Orleans.Runtime.GrainDirectory
             // Multi-activation grains are much simpler because there is no need for duplicate activation logic.
             if (multiActivations != null && multiActivations.Count > 0)
             {
-                var tasks = multiActivations.Select(addr => this.localDirectory.RegisterAsync(addr, false, 1)).ToArray();
+                var tasks = multiActivations.Select(addr => this.localGrainDirectory.RegisterAsync(addr, false, 1)).ToArray();
                 try
                 {
                     await Task.WhenAll(tasks);
@@ -262,7 +269,7 @@ namespace Orleans.Runtime.GrainDirectory
                 this.pendingOperations.Enqueue((name, action));
                 if (this.pendingOperations.Count <= 2)
                 {
-                    this.localDirectory.Scheduler.QueueTask(this.ExecutePendingOperations, this.localDirectory.RemoteGrainDirectory.SchedulingContext);
+                    this.localGrainDirectory.Scheduler.QueueTask(this.ExecutePendingOperations, this.localGrainDirectory.RemoteGrainDirectory.SchedulingContext);
                 }
             }
         }
