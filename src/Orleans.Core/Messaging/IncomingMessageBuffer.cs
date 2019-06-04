@@ -170,7 +170,7 @@ namespace Orleans.Runtime
             // build message
 
             this.deserializationContext.Reset();
-            ((BinaryTokenStreamReader)this.deserializationContext.StreamReader).Reset(header);
+            this.deserializationContext.StreamReader.Reset(header);
 
             msg = new Message
             {

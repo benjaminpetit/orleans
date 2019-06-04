@@ -482,8 +482,8 @@ namespace Orleans.Serialization
         private class SimpleTypeSerializer
         {
             public SimpleTypeSerializer(
-                Expression<Action<IBinaryTokenStreamWriter>> write,
-                Expression<Action<IBinaryTokenStreamReader>> read)
+                Expression<Action<BinaryTokenStreamWriter>> write,
+                Expression<Action<BinaryTokenStreamReader>> read)
             {
                 this.WriteMethod = TypeUtils.Method(write);
                 this.ReadMethod = TypeUtils.Method(read);
