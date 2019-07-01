@@ -336,7 +336,7 @@ namespace Orleans.Runtime.GrainDirectory
                     // Only notify the catalog once.
                     // The catalog is intentionally called using the previous membership snapshot so that calculations about directory partitions
                     // are consistent.
-                    this.catalog.OnSiloStatusChange(existing, removed.SiloAddress, removed.Status);
+                    this.catalog.OnMembershipChange(existing, updated, removed);
                 }
                 catch (Exception exc)
                 {
