@@ -194,7 +194,7 @@ namespace UnitTests.Grains
             this.catalog = catalog;
         }
 
-        private ILocalGrainDirectory LocalGrainDirectory => this.ServiceProvider.GetRequiredService<ILocalGrainDirectory>();
+        private LocalGrainDirectory LocalGrainDirectory => this.ServiceProvider.GetRequiredService<LocalGrainDirectory>();
         private ILocalSiloDetails LocalSiloDetails => this.ServiceProvider.GetRequiredService<ILocalSiloDetails>();
 
         public Task Notify()

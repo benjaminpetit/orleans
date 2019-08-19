@@ -67,15 +67,6 @@ namespace Orleans.Runtime.GrainDirectory
         void InvalidateCacheEntry(ActivationAddress activation, bool invalidateDirectoryAlso = false);
 
         /// <summary>
-        /// For testing purposes only.
-        /// Returns the silo that this silo thinks is the primary owner of directory information for
-        /// the provided grain ID.
-        /// </summary>
-        /// <param name="grain"></param>
-        /// <returns></returns>
-        SiloAddress GetPrimaryForGrain(GrainId grain);
-
-        /// <summary>
         /// Returns the directory information held in a local directory partition for the provided grain ID.
         /// The result will be null if no information is held.
         /// </summary>
@@ -98,11 +89,5 @@ namespace Orleans.Runtime.GrainDirectory
         /// <param name="silo">the address of the silo</param>
         /// <returns>true if the silo is known to be part of this cluster</returns>
         bool IsSiloInCluster(SiloAddress silo);
-
-        /// <summary>
-        /// Sets the callback to <see cref="Catalog"/> which is called when a silo is removed from membership.
-        /// </summary>
-        /// <param name="catalogOnSiloRemoved">The callback.</param>
-        void SetSiloRemovedCatalogCallback(Action<SiloAddress, SiloStatus> catalogOnSiloRemoved);
     }
 }

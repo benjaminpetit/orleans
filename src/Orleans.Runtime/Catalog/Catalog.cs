@@ -176,7 +176,9 @@ namespace Orleans.Runtime
             });
             maxWarningRequestProcessingTime = this.messagingOptions.Value.ResponseTimeout.Multiply(5);
             maxRequestProcessingTime = this.messagingOptions.Value.MaxRequestProcessingTime;
-            grainDirectory.SetSiloRemovedCatalogCallback(this.OnSiloStatusChange);
+
+            // TODO move SetSiloRemovedCatalogCallback into LocalGrainDirectory to avoid such cast
+            (grainDirectory as LocalGrainDirectory)?.SetSiloRemovedCatalogCallback(this.OnSiloStatusChange);
         }
 
         /// <summary>
@@ -334,7 +336,7 @@ namespace Orleans.Runtime
                 SiloName = localSiloName,
                 LocalCacheActivationAddresses = directory.GetLocalCacheData(grain),
                 LocalDirectoryActivationAddresses = directory.GetLocalDirectoryData(grain).Addresses,
-                PrimaryForGrain = directory.GetPrimaryForGrain(grain)
+                PrimaryForGrain = (directory as LocalGrainDirectory)?.GetPrimaryForGrain(grain)
             };
             try
             {
@@ -594,7 +596,7 @@ namespace Orleans.Runtime
                         CounterStatistic
                             .FindOrCreate(StatisticNames.CATALOG_ACTIVATION_CONCURRENT_REGISTRATION_ATTEMPTS)
                             .Increment();
-                        var primary = directory.GetPrimaryForGrain(activation.ForwardingAddress.Grain);
+                        var primary = (directory as LocalGrainDirectory)?.GetPrimaryForGrain(activation.ForwardingAddress.Grain);
                         if (logger.IsEnabled(LogLevel.Information))
                         {
                             // If this was a duplicate, it's not an error, just a race.
@@ -1370,7 +1372,10 @@ namespace Orleans.Runtime
         }
 
         private void OnSiloStatusChange(SiloAddress updatedSilo, SiloStatus status)
-        { 
+        {
+            // Cannot fail since this method will be only called by an instance of LocalGrainDirectory
+            var localGrainDirectory = (LocalGrainDirectory)this.directory;
+
             // ignore joining events and also events on myself.
             if (updatedSilo.Equals(LocalSilo)) return;
 
@@ -1396,7 +1401,7 @@ namespace Orleans.Runtime
                         {
                             var activationData = activation.Value;
                             if (!activationData.IsUsingGrainDirectory) continue;
-                            if (!updatedSilo.Equals(directory.GetPrimaryForGrain(activationData.Grain))) continue;
+                            if (!updatedSilo.Equals(localGrainDirectory.GetPrimaryForGrain(activationData.Grain))) continue;
 
                             lock (activationData)
                             {
