@@ -53,7 +53,7 @@ namespace Orleans.Runtime
         private readonly ClusterOptions clusterOptions;
         private readonly ISiloMessageCenter messageCenter;
         private readonly OrleansTaskScheduler scheduler;
-        private readonly LocalGrainDirectory localGrainDirectory;
+        private readonly ILocalGrainDirectory localGrainDirectory;
         private readonly ActivationDirectory activationDirectory;
         private readonly IncomingMessageAgent incomingAgent;
         private readonly IncomingMessageAgent incomingSystemAgent;
@@ -192,7 +192,7 @@ namespace Orleans.Runtime
 
             // Now the router/directory service
             // This has to come after the message center //; note that it then gets injected back into the message center.;
-            localGrainDirectory = Services.GetRequiredService<LocalGrainDirectory>();
+            localGrainDirectory = Services.GetRequiredService<ILocalGrainDirectory>();
 
             // Now the activation directory.
             activationDirectory = Services.GetRequiredService<ActivationDirectory>();
