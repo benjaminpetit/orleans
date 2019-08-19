@@ -13,6 +13,7 @@ using Orleans.Runtime.MultiClusterNetwork;
 using Orleans.Configuration;
 using System.ComponentModel;
 using System.Collections.Immutable;
+using Orleans.Runtime.Providers;
 
 namespace Orleans.Runtime.GrainDirectory
 {
@@ -233,6 +234,11 @@ namespace Orleans.Runtime.GrainDirectory
         // It's easy to change this, if we think the trade-off is better the other way.
         public async Task Stop(bool doOnStopHandoff)
         {
+            await Scheduler.QueueTask(() => StopImpl(doOnStopHandoff), CacheValidator.SchedulingContext);
+        }
+
+        private async Task StopImpl(bool doOnStopHandoff)
+        {
             // This will cause remote write requests to be forwarded to the silo that will become the new owner.
             // Requests might bounce back and forth for a while as membership stabilizes, but they will either be served by the
             // new owner of the grain, or will wind up failing. In either case, we avoid requests succeeding at this silo after we've
@@ -264,6 +270,20 @@ namespace Orleans.Runtime.GrainDirectory
             DirectoryPartition.Clear();
             DirectoryCache.Clear();
         }
+
+        public void RegisterSystemTargets(SiloProviderRuntime siloProviderRuntime, ILogger logger)
+        {
+            logger.Debug("Creating {0} System Target", "RemoteGrainDirectory + CacheValidator");
+            siloProviderRuntime.RegisterSystemTarget(RemoteGrainDirectory);
+            siloProviderRuntime.RegisterSystemTarget(CacheValidator);
+
+            logger.Debug("Creating {0} System Target", "RemoteClusterGrainDirectory");
+            siloProviderRuntime.RegisterSystemTarget(RemoteClusterGrainDirectory);
+        }
+
+        //         RemoteGrainDirectory RemoteGrainDirectory { get; }
+        //RemoteGrainDirectory CacheValidator { get; }
+        //ClusterGrainDirectory RemoteClusterGrainDirectory { get; }
 
         /// <inheritdoc />
         public void SetSiloRemovedCatalogCallback(Action<SiloAddress, SiloStatus> callback)

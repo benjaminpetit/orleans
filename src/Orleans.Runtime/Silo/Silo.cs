@@ -285,13 +285,9 @@ namespace Orleans.Runtime
 
             logger.Debug("Creating {0} System Target", "DeploymentLoadPublisher");
             RegisterSystemTarget(Services.GetRequiredService<DeploymentLoadPublisher>());
-            
-            logger.Debug("Creating {0} System Target", "RemoteGrainDirectory + CacheValidator");
-            RegisterSystemTarget(LocalGrainDirectory.RemoteGrainDirectory);
-            RegisterSystemTarget(LocalGrainDirectory.CacheValidator);
 
-            logger.Debug("Creating {0} System Target", "RemoteClusterGrainDirectory");
-            RegisterSystemTarget(LocalGrainDirectory.RemoteClusterGrainDirectory);
+            var providerRuntime = this.Services.GetRequiredService<SiloProviderRuntime>();
+            LocalGrainDirectory.RegisterSystemTargets(providerRuntime, logger);
 
             logger.Debug("Creating {0} System Target", "ClientObserverRegistrar + TypeManager");
 
@@ -747,8 +743,7 @@ namespace Orleans.Runtime
                     logger.Info(ErrorCode.SiloShuttingDown, "Silo starting to Shutdown()");
 
                     //Stop LocalGrainDirectory
-                    await scheduler.QueueTask(()=>localGrainDirectory.Stop(true), localGrainDirectory.CacheValidator.SchedulingContext)
-                        .WithCancellation(ct, "localGrainDirectory Stop failed because the task was cancelled");
+                    await localGrainDirectory.Stop(true).WithCancellation(ct, "localGrainDirectory Stop failed because the task was cancelled");
                     SafeExecute(() => catalog.DeactivateAllActivations().Wait(ct));
                     //wait for all queued message sent to OutboundMessageQueue before MessageCenter stop and OutboundMessageQueue stop. 
                     await Task.Delay(WaitForMessageToBeQueuedForOutbound);

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans.GrainDirectory;
+using Orleans.Runtime.Providers;
 
 namespace Orleans.Runtime.GrainDirectory
 {
@@ -18,9 +20,7 @@ namespace Orleans.Runtime.GrainDirectory
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1716:IdentifiersShouldNotMatchKeywords", MessageId = "Stop")]
         Task Stop(bool doOnStopHandoff);
 
-        RemoteGrainDirectory RemoteGrainDirectory { get; }
-        RemoteGrainDirectory CacheValidator { get; }
-        ClusterGrainDirectory RemoteClusterGrainDirectory { get; }
+        void RegisterSystemTargets(SiloProviderRuntime siloProviderRuntime, ILogger logger);
 
         /// <summary>
         /// Removes the record for an non-existing activation from the directory service.
