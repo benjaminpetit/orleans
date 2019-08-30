@@ -7,7 +7,7 @@ using Orleans.Runtime.Providers;
 
 namespace Orleans.Runtime.GrainDirectory
 {
-    internal interface ILocalGrainDirectory : IGrainDirectory, ISiloStatusListener
+    internal interface ILocalGrainDirectory : IDistributedGrainDirectory, ISiloStatusListener
     {
         /// <summary>
         /// Starts the local portion of the directory service.
