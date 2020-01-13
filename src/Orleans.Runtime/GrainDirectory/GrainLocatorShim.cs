@@ -18,6 +18,9 @@ namespace Orleans.Runtime.GrainDirectory
         public Task<AddressesAndTag> Lookup(GrainId grainId)
             => this.localGrainDirectory.LookupAsync(grainId);
 
+        public bool TryLocalLookup(GrainId grainId, out AddressesAndTag addresses)
+            => this.localGrainDirectory.LocalLookup(grainId, out addresses);
+
         public Task<AddressAndTag> Register(ActivationAddress address)
             => this.localGrainDirectory.RegisterAsync(address, singleActivation: true);
 

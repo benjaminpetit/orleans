@@ -1322,7 +1322,7 @@ namespace Orleans.Runtime
 
         public bool FastLookup(GrainId grain, out AddressesAndTag addresses)
         {
-            return directory.LocalLookup(grain, out addresses) && addresses.Addresses != null && addresses.Addresses.Count > 0;
+            return this.grainLocator.TryLocalLookup(grain, out addresses) && addresses.Addresses != null && addresses.Addresses.Count > 0;
             // NOTE: only check with the local directory cache.
             // DO NOT check in the local activations TargetDirectory!!!
             // The only source of truth about which activation should be legit to is the state of the ditributed directory.
@@ -1333,11 +1333,12 @@ namespace Orleans.Runtime
 
         public Task<AddressesAndTag> FullLookup(GrainId grain)
         {
-            return scheduler.RunOrQueueTask(() => directory.LookupAsync(grain), this.SchedulingContext);
+            return scheduler.RunOrQueueTask(() => this.grainLocator.Lookup(grain), this.SchedulingContext);
         }
 
         public Task<AddressesAndTag> LookupInCluster(GrainId grain, string clusterId)
         {
+            // Only used to locate clients
             return scheduler.RunOrQueueTask(() => directory.LookupInCluster(grain, clusterId), this.SchedulingContext);
         }
 
