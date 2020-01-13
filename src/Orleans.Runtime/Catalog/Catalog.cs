@@ -77,6 +77,7 @@ namespace Orleans.Runtime
 
         private static readonly TimeSpan UnregisterTimeout = TimeSpan.FromSeconds(1);
 
+        private readonly IGrainLocator grainLocator;
         private readonly ILocalGrainDirectory directory;
         private readonly OrleansTaskScheduler scheduler;
         private readonly ActivationDirectory activations;
@@ -104,6 +105,7 @@ namespace Orleans.Runtime
 
         public Catalog(
             ILocalSiloDetails localSiloDetails,
+            IGrainLocator grainLocator,
             ILocalGrainDirectory grainDirectory,
             GrainTypeManager typeManager,
             OrleansTaskScheduler scheduler,
@@ -126,6 +128,7 @@ namespace Orleans.Runtime
         {
             this.LocalSilo = localSiloDetails.SiloAddress;
             this.localSiloName = localSiloDetails.Name;
+            this.grainLocator = grainLocator;
             this.directory = grainDirectory;
             this.activations = activationDirectory;
             this.scheduler = scheduler;
@@ -150,6 +153,7 @@ namespace Orleans.Runtime
                 this.messagingOptions,
                 placementDirectorsManager,
                 grainDirectory,
+                grainLocator,
                 this.activationCollector,
                 messageFactory,
                 versionSelectorManager.CompatibilityDirectorManager,
@@ -639,7 +643,7 @@ namespace Orleans.Runtime
                     try
                     {
                         await this.scheduler.RunOrQueueTask(
-                                    () => directory.UnregisterAsync(address, UnregistrationCause.Force),
+                                    () => this.grainLocator.Unregister(address, UnregistrationCause.Force),
                                     SchedulingContext).WithTimeout(UnregisterTimeout);
                     }
                     catch (Exception ex)
@@ -775,7 +779,7 @@ namespace Orleans.Runtime
             // The unregistration is normally done in the regular deactivation process, but since this activation seems
             // stuck (it might never run the deactivation process), we remove it from the directory directly
             scheduler.RunOrQueueTask(
-                () => directory.UnregisterAsync(activationData.Address, UnregistrationCause.Force),
+                () => this.grainLocator.Unregister(activationData.Address, UnregistrationCause.Force),
                 SchedulingContext)
                 .Ignore();
         }
@@ -1007,7 +1011,7 @@ namespace Orleans.Runtime
                     if (activationsToDeactivate.Count > 0)
                     {
                         await scheduler.RunOrQueueTask(() =>
-                            directory.UnregisterManyAsync(activationsToDeactivate, UnregistrationCause.Force),
+                            this.grainLocator.UnregisterMany(activationsToDeactivate, UnregistrationCause.Force),
                             SchedulingContext);
                     }
                 }
@@ -1262,7 +1266,7 @@ namespace Orleans.Runtime
             // Among those that are registered in the directory, we currently do not have any multi activations.
             if (activation.IsUsingGrainDirectory)
             {
-                var result = await scheduler.RunOrQueueTask(() => directory.RegisterAsync(address, singleActivation:true), this.SchedulingContext);
+                var result = await scheduler.RunOrQueueTask(() => this.grainLocator.Register(address), this.SchedulingContext);
                 if (address.Equals(result.Address)) return ActivationRegistrationResult.Success;
                
                 return new ActivationRegistrationResult(existingActivationAddress: result.Address);
