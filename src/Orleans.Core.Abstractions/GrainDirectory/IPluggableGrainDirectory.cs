@@ -14,7 +14,7 @@ namespace Orleans.GrainDirectory
         Task<List<GrainAddress>> Lookup(string grainId);
     }
 
-    public struct GrainAddress
+    public class GrainAddress
     {
         public string SiloAddress { get; set; }
         public string GrainId { get; set; }

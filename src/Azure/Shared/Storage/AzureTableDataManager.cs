@@ -216,6 +216,40 @@ namespace Orleans.Transactions.AzureStorage
             }
         }
 
+        /// <summary>
+        /// Inserts a data entry in the Azure table: fail if there is already an existing version 
+        /// </summary>
+        /// <param name="data">Data to be inserted in the table.</param>
+        public async Task<T> InsertTableEntryAsync(T data)
+        {
+            const string operation = "InsertTableEntry";
+            var startTime = DateTime.UtcNow;
+            if (Logger.IsEnabled(LogLevel.Trace)) Logger.Trace("{0} entry {1} into table {2}", operation, data, TableName);
+
+            try
+            {
+                try
+                {
+                    // WAS:
+                    // svc.AttachTo(TableName, data, null);
+                    // svc.UpdateObject(data);
+                    // SaveChangesOptions.ReplaceOnUpdate,
+                    var opResult = await tableReference.ExecuteAsync(TableOperation.Insert(data));
+                    return opResult.Result as T;
+                }
+                catch (Exception exc)
+                {
+                    Logger.Warn((int)Utilities.ErrorCode.AzureTable_06,
+                        $"Intermediate error upserting entry {(data == null ? "null" : data.ToString())} to the table {TableName}", exc);
+                    throw;
+                }
+            }
+            finally
+            {
+                CheckAlertSlowAccess(startTime, operation);
+            }
+        }
+
 
         /// <summary>
         /// Merges a data entry in the Azure table.
