@@ -596,7 +596,7 @@ namespace Orleans.Runtime
             ActivationRegistrationResult registrationResult = default(ActivationRegistrationResult),
             Exception exception = null)
         {
-            ActivationAddress address = activation.Address;
+            var address = activation.Address;
 
             if (initStage == ActivationInitializationStage.Register && registrationResult.ExistingActivationAddress != null)
             {
@@ -1160,7 +1160,7 @@ namespace Orleans.Runtime
                 // TODO: During lifecycle refactor discuss with team whether activation failure should have a well defined exception, or throw whatever
                 //   exception caused activation to fail, with no indication that it occured durring activation
                 //   rather than the grain call.
-                OrleansLifecycleCanceledException canceledException = exc as OrleansLifecycleCanceledException;
+                var canceledException = exc as OrleansLifecycleCanceledException;
                 if(canceledException?.InnerException != null)
                 {
                     ExceptionDispatchInfo.Capture(canceledException.InnerException).Throw();
@@ -1260,16 +1260,16 @@ namespace Orleans.Runtime
 
         private async Task<ActivationRegistrationResult> RegisterActivationInGrainDirectoryAndValidate(ActivationData activation)
         {
-            ActivationAddress address = activation.Address;
+            var address = activation.Address;
 
             // Currently, the only grain type that is not registered in the Grain Directory is StatelessWorker. 
             // Among those that are registered in the directory, we currently do not have any multi activations.
             if (activation.IsUsingGrainDirectory)
             {
                 var result = await scheduler.RunOrQueueTask(() => this.grainLocator.Register(address), this.SchedulingContext);
-                if (address.Equals(result.Address)) return ActivationRegistrationResult.Success;
+                if (address.Equals(result)) return ActivationRegistrationResult.Success;
                
-                return new ActivationRegistrationResult(existingActivationAddress: result.Address);
+                return new ActivationRegistrationResult(existingActivationAddress: result);
             }
             else if (activation.PlacedUsing is StatelessWorkerPlacement stPlacement)
             {
@@ -1320,9 +1320,9 @@ namespace Orleans.Runtime
             // ActivationData will transition out of ActivationState.Activating via Dispatcher.OnActivationCompletedRequest
         }
 
-        public bool FastLookup(GrainId grain, out AddressesAndTag addresses)
+        public bool FastLookup(GrainId grain, out List<ActivationAddress> addresses)
         {
-            return this.grainLocator.TryLocalLookup(grain, out addresses) && addresses.Addresses != null && addresses.Addresses.Count > 0;
+            return this.grainLocator.TryLocalLookup(grain, out addresses) && addresses != null && addresses.Count > 0;
             // NOTE: only check with the local directory cache.
             // DO NOT check in the local activations TargetDirectory!!!
             // The only source of truth about which activation should be legit to is the state of the ditributed directory.
@@ -1331,7 +1331,7 @@ namespace Orleans.Runtime
             // thus volaiting the single-activation semantics and not converging even eventualy!
         }
 
-        public Task<AddressesAndTag> FullLookup(GrainId grain)
+        public Task<List<ActivationAddress>> FullLookup(GrainId grain)
         {
             return scheduler.RunOrQueueTask(() => this.grainLocator.Lookup(grain), this.SchedulingContext);
         }

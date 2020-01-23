@@ -8,14 +8,14 @@ namespace Orleans.GrainDirectory
 {
     interface IGrainLocator
     {
-        Task<AddressAndTag> Register(ActivationAddress address);
+        Task<ActivationAddress> Register(ActivationAddress address);
 
         Task Unregister(ActivationAddress address, UnregistrationCause cause);
 
         Task UnregisterMany(List<ActivationAddress> addresses, UnregistrationCause cause);
 
-        Task<AddressesAndTag> Lookup(GrainId grainId);
+        Task<List<ActivationAddress>> Lookup(GrainId grainId);
 
-        bool TryLocalLookup(GrainId grainId, out AddressesAndTag addresses);
+        bool TryLocalLookup(GrainId grainId, out List<ActivationAddress> addresses);
     }
 }
