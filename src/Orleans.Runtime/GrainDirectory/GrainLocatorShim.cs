@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Orleans.Configuration;
 using Orleans.GrainDirectory;
 
 namespace Orleans.Runtime.GrainDirectory
@@ -56,9 +57,12 @@ namespace Orleans.Runtime.GrainDirectory
     {
         private readonly IPluggableGrainDirectory grainDirectory;
 
+        private readonly IGrainDirectoryCache cache;
+
         public CustomGrainLocator(IPluggableGrainDirectory grainDirectory)
         {
             this.grainDirectory = grainDirectory;
+            this.cache = new LRUBasedGrainDirectoryCache(GrainDirectoryOptions.DEFAULT_CACHE_SIZE, GrainDirectoryOptions.DEFAULT_MAXIMUM_CACHE_TTL);
         }
 
         public async Task<List<ActivationAddress>> Lookup(GrainId grainId)
@@ -68,17 +72,33 @@ namespace Orleans.Runtime.GrainDirectory
             if (entries == null || entries.Count == 0)
                 return new List<ActivationAddress>();
 
-            return entries.Select(e => ConvertToActivationAddress(e)).ToList();
+            var results = entries.Select(e => ConvertToActivationAddress(e)).ToList();
+            this.cache.AddOrUpdate(grainId, results.Select(item => Tuple.Create(item.Silo, item.Activation)).ToList(), 0);
+
+            return results;
         }
 
         public async Task<ActivationAddress> Register(ActivationAddress address)
         {
             var result = await this.grainDirectory.Register(ConvertToGrainAddress(address));
-            return ConvertToActivationAddress(result);
+            var activationAddress = ConvertToActivationAddress(result);
+            this.cache.AddOrUpdate(
+                activationAddress.Grain,
+                new List<Tuple<SiloAddress,ActivationId>>() { Tuple.Create(activationAddress.Silo, activationAddress.Activation) },
+                0);
+            return activationAddress;
         }
 
         public bool TryLocalLookup(GrainId grainId, out List<ActivationAddress> addresses)
         {
+            if (this.cache.LookUp(grainId, out var results))
+            {
+                addresses = results
+                    .Select(tuple => ActivationAddress.GetAddress(tuple.Item1, grainId, tuple.Item2))
+                    .ToList();
+                return true;
+            }
+
             addresses = null;
             return false;
         }
@@ -86,12 +106,15 @@ namespace Orleans.Runtime.GrainDirectory
         public async Task Unregister(ActivationAddress address, UnregistrationCause cause)
         {
             await this.grainDirectory.Unregister(ConvertToGrainAddress(address));
+            this.cache.Remove(address.Grain);
         }
 
         public async Task UnregisterMany(List<ActivationAddress> addresses, UnregistrationCause cause)
         {
             var tasks = addresses.Select(addr => Unregister(addr, cause)).ToList();
             await Task.WhenAll(tasks);
+            foreach (var addr in addresses)
+                this.cache.Remove(addr.Grain);
         }
 
         private static ActivationAddress ConvertToActivationAddress(GrainAddress addr)
