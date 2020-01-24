@@ -3,15 +3,27 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Orleans.GrainDirectory;
 
 namespace Orleans.Runtime.GrainDirectory
 {
-    internal class GrainLocatorShim : IGrainLocator
+    internal static class GrainLocatorFactory
+    {
+        public static IGrainLocator GetGrainLocator(IServiceProvider sp)
+        {
+            var customDirectory = sp.GetService<IPluggableGrainDirectory>();
+            return customDirectory != null
+                ? new CustomGrainLocator(customDirectory)
+                : (IGrainLocator)new InClusterGrainLocator(sp.GetRequiredService<ILocalGrainDirectory>());
+        }
+    }
+
+    internal class InClusterGrainLocator : IGrainLocator
     {
         private readonly ILocalGrainDirectory localGrainDirectory;
 
-        public GrainLocatorShim(ILocalGrainDirectory localGrainDirectory)
+        public InClusterGrainLocator(ILocalGrainDirectory localGrainDirectory)
         {
             this.localGrainDirectory = localGrainDirectory;
         }
@@ -44,7 +56,7 @@ namespace Orleans.Runtime.GrainDirectory
     {
         private readonly IPluggableGrainDirectory grainDirectory;
 
-        public ClustomGrainLocator(IPluggableGrainDirectory grainDirectory)
+        public CustomGrainLocator(IPluggableGrainDirectory grainDirectory)
         {
             this.grainDirectory = grainDirectory;
         }
@@ -53,8 +65,8 @@ namespace Orleans.Runtime.GrainDirectory
         {
             var entries = await this.grainDirectory.Lookup(grainId.ToParsableString());
 
-            if (entries.Count == 0)
-                return null;
+            if (entries == null || entries.Count == 0)
+                return new List<ActivationAddress>();
 
             return entries.Select(e => ConvertToActivationAddress(e)).ToList();
         }
@@ -84,10 +96,18 @@ namespace Orleans.Runtime.GrainDirectory
 
         private static ActivationAddress ConvertToActivationAddress(GrainAddress addr)
         {
-            return ActivationAddress.GetAddress(
-                SiloAddress.FromParsableString(addr.SiloAddress),
-                GrainId.FromParsableString(addr.GrainId),
-                ActivationId.GetActivationId(UniqueKey.Parse(addr.ActivationId.AsSpan())));
+            try
+            {
+                return ActivationAddress.GetAddress(
+                        SiloAddress.FromParsableString(addr.SiloAddress),
+                        GrainId.FromParsableString(addr.GrainId),
+                        ActivationId.GetActivationId(UniqueKey.Parse(addr.ActivationId.AsSpan())));
+            }
+            catch (Exception)
+            {
+
+                throw;
+            }
         }
 
         private static GrainAddress ConvertToGrainAddress(ActivationAddress addr)
@@ -96,7 +116,7 @@ namespace Orleans.Runtime.GrainDirectory
             {
                 SiloAddress = addr.Silo.ToParsableString(),
                 GrainId = addr.Grain.ToParsableString(),
-                ActivationId = addr.Activation.Key.ToByteArray().ToString()
+                ActivationId = (addr.Activation.Key.ToHexString())
             };
         }
     }
