@@ -14,5 +14,9 @@
     <PackageReference Include="Xunit.SkippableFact" Version="$(XunitSkippableFactVersion)" />
     <PackageReference Include="FluentAssertions" Version="$(FluentAssertionsVersion)" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Azure\Orleans.Persistence.AzureStorage\Orleans.Persistence.AzureStorage.csproj" />
+  </ItemGroup>
   
 </Project>

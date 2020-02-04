@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.CodeGeneration;
 using Orleans.Configuration;
+using Orleans.GrainDirectory;
 using Orleans.Runtime.GrainDirectory;
 using Orleans.Runtime.Messaging;
 using Orleans.Runtime.Placement;
@@ -26,19 +27,22 @@ namespace Orleans.Runtime
         private readonly SiloMessagingOptions messagingOptions;
         private readonly PlacementDirectorsManager placementDirectorsManager;
         private readonly ILocalGrainDirectory localGrainDirectory;
+        private readonly IGrainLocator grainLocator;
         private readonly ActivationCollector activationCollector;
         private readonly MessageFactory messageFactory;
         private readonly CompatibilityDirectorManager compatibilityDirectorManager;
         private readonly RuntimeMessagingTrace messagingTrace;
         private readonly SchedulingOptions schedulingOptions;
         private readonly ILogger invokeWorkItemLogger;
+
         internal Dispatcher(
-            OrleansTaskScheduler scheduler, 
+            OrleansTaskScheduler scheduler,
             ISiloMessageCenter transport, 
             Catalog catalog,
             IOptions<SiloMessagingOptions> messagingOptions,
             PlacementDirectorsManager placementDirectorsManager,
             ILocalGrainDirectory localGrainDirectory,
+            IGrainLocator grainLocator,
             ActivationCollector activationCollector,
             MessageFactory messageFactory,
             CompatibilityDirectorManager compatibilityDirectorManager,
@@ -53,6 +57,7 @@ namespace Orleans.Runtime
             this.invokeWorkItemLogger = loggerFactory.CreateLogger<InvokeWorkItem>();
             this.placementDirectorsManager = placementDirectorsManager;
             this.localGrainDirectory = localGrainDirectory;
+            this.grainLocator = grainLocator;
             this.activationCollector = activationCollector;
             this.messageFactory = messageFactory;
             this.compatibilityDirectorManager = compatibilityDirectorManager;
@@ -163,8 +168,23 @@ namespace Orleans.Runtime
                             {
                                 try
                                 {
-                                    await this.localGrainDirectory.UnregisterAfterNonexistingActivation(
-                                        nonExistentActivation, origin);
+                                    
+                                    logger.Trace("UnregisterAfterNonexistingActivation addr={0} origin={1}", nonExistentActivation, origin);
+
+                                    if (origin == null || this.localGrainDirectory.IsSiloInCluster(origin))
+                                    {
+                                        // the request originated in this cluster, call unregister here
+                                        await this.grainLocator.Unregister(nonExistentActivation, UnregistrationCause.NonexistentActivation);
+                                    }
+                                    else
+                                    {
+                                        // TODO: Multicluster is broken because of this, we need to fwd unregistration call if the origin does not
+                                        // belong to the current cluster
+
+                                        // the request originated in another cluster, call unregister there
+                                        //var remoteDirectory = this.grainFactory.GetSystemTarget<IRemoteGrainDirectory>(Constants.DirectoryServiceId, origin);
+                                        //await remoteDirectory.UnregisterAsync(nonExistentActivation, UnregistrationCause.NonexistentActivation);
+                                    }
                                 }
                                 catch (Exception exc)
                                 {

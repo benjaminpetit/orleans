@@ -11,6 +11,7 @@ using TestExtensions;
 using Orleans.Hosting;
 using Orleans.Configuration;
 using Orleans.Storage;
+using Orleans.Persistence.AzureStorage.Directory;
 
 // ReSharper disable RedundantAssignment
 // ReSharper disable UnusedVariable
