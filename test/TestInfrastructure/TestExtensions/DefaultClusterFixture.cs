@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Hosting;
 using Orleans.TestingHost;
+using Orleans.Persistence.AzureStorage.Directory;
 
 using System.Threading.Tasks;
 
@@ -65,6 +66,7 @@ namespace TestExtensions
             public void Configure(ISiloHostBuilder hostBuilder)
             {
                 hostBuilder
+                    .UseAzureTableGrainDirectory(TestDefaultConfiguration.DataConnectionString)
                     .UseInMemoryReminderService()
                     .AddMemoryGrainStorageAsDefault()
                     .AddMemoryGrainStorage("MemoryStore");
