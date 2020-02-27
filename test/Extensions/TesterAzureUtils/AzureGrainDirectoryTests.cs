@@ -1,13 +1,41 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Orleans.Configuration;
 using Orleans.GrainDirectory;
+using Orleans.GrainDirectory.AzureStorage;
+using Orleans.TestingHost.Utils;
+using TestExtensions;
 using Xunit;
 
 namespace Tester.AzureUtils
 {
     [TestCategory("Azure"), TestCategory("Storage")]
-    public class AzureGrainDirectoryTests : AzureStorageBasicTests
+    public class AzureTableGrainDirectoryTests : GrainDirectoryTests
     {
+        protected override IGrainDirectory GetGrainDirectory()
+        {
+            TestUtils.CheckForAzureStorage();
+
+            var clusterOptions = new ClusterOptions
+            {
+                ClusterId = Guid.NewGuid().ToString("N"),
+                ServiceId = Guid.NewGuid().ToString("N"),
+            };
+
+            var directoryOptions = new AzureTableGrainDirectoryOptions
+            {
+                ConnectionString = TestDefaultConfiguration.DataConnectionString,
+            };
+
+            var loggerFactory = TestingUtils.CreateDefaultLoggerFactory("AzureGrainDirectoryTests.log");
+
+            var directory = new AzureTableGrainDirectory(Options.Create(clusterOptions), Options.Create(directoryOptions), loggerFactory);
+            directory.InitializeIfNeeded().GetAwaiter().GetResult();
+
+            return directory;
+        }
     }
 
     // TODO Move that into a common project
@@ -15,10 +43,12 @@ namespace Tester.AzureUtils
     {
         private IGrainDirectory grainDirectory;
 
-        protected GrainDirectoryTests(IGrainDirectory grainDirectory)
+        protected GrainDirectoryTests()
         {
-            this.grainDirectory = grainDirectory ?? throw new ArgumentNullException(nameof(grainDirectory));
+            this.grainDirectory = GetGrainDirectory();
         }
+
+        protected abstract IGrainDirectory GetGrainDirectory();
 
         [SkippableFact]
         public async Task RegisterLookupUnregisterLookup()
@@ -67,6 +97,28 @@ namespace Tester.AzureUtils
             Assert.Equal(expected, await this.grainDirectory.Register(differentActivation));
             Assert.Equal(expected, await this.grainDirectory.Register(differentSilo));
 
+            Assert.Equal(expected, await this.grainDirectory.Lookup(expected.GrainId));
+        }
+
+        [SkippableFact]
+        public async Task DoNotDeleteDifferentActivationIdEntry()
+        {
+            var expected = new GrainAddress
+            {
+                ActivationId = Guid.NewGuid().ToString("N"),
+                GrainId = "user/someraondomuser_" + Guid.NewGuid().ToString("N"),
+                SiloAddress = "10.0.23.12:1000@5678"
+            };
+
+            var otherEntry = new GrainAddress
+            {
+                ActivationId = Guid.NewGuid().ToString("N"),
+                GrainId = expected.GrainId,
+                SiloAddress = "10.0.23.12:1000@5678"
+            };
+
+            Assert.Equal(expected, await this.grainDirectory.Register(expected));
+            await this.grainDirectory.Unregister(otherEntry);
             Assert.Equal(expected, await this.grainDirectory.Lookup(expected.GrainId));
         }
 
