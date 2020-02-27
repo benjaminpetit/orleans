@@ -15,6 +15,37 @@ namespace Orleans.GrainDirectory.AzureStorage
         private readonly AzureTableDataManager<GrainDirectoryEntity> tableDataManager;
         private readonly string clusterId;
 
+        private class GrainDirectoryEntity : TableEntity
+        {
+            public string GrainId { get; set; }
+
+            public string SiloAddress { get; set; }
+
+            public string ActivationId { get; set; }
+
+            public GrainAddress ToGrainAddress()
+            {
+                return new GrainAddress
+                {
+                    GrainId = this.GrainId,
+                    SiloAddress = this.SiloAddress,
+                    ActivationId = this.ActivationId,
+                };
+            }
+
+            public static GrainDirectoryEntity FromGrainAddress(string clusterId, GrainAddress address)
+            {
+                return new GrainDirectoryEntity
+                {
+                    PartitionKey = clusterId,
+                    RowKey = AzureTableUtils.SanitizeTableProperty(address.GrainId),
+                    GrainId = address.GrainId,
+                    SiloAddress = address.SiloAddress,
+                    ActivationId = address.ActivationId,
+                };
+            }
+        }
+
         public AzureTableGrainDirectory(
             IOptions<ClusterOptions> clusterOptions,
             IOptions<AzureTableGrainDirectoryOptions> directoryOptions,
@@ -69,51 +100,5 @@ namespace Orleans.GrainDirectory.AzureStorage
         {
             lifecycle.Subscribe(nameof(AzureTableGrainDirectory), ServiceLifecycleStage.RuntimeInitialize, InitializeIfNeeded);
         }
-    }
-
-    internal class GrainDirectoryEntity : TableEntity
-    {
-        public string GrainId { get; set; }
-
-        public string SiloAddress { get; set; }
-
-        public string ActivationId { get; set; }
-
-        public GrainAddress ToGrainAddress()
-        {
-            return new GrainAddress
-            {
-                GrainId = this.GrainId,
-                SiloAddress = this.SiloAddress,
-                ActivationId = this.ActivationId,
-            };
-        }
-
-        public static GrainDirectoryEntity FromGrainAddress(string clusterId, GrainAddress address)
-        {
-            return new GrainDirectoryEntity
-            {
-                PartitionKey = clusterId,
-                RowKey = AzureTableUtils.SanitizeTableProperty(address.GrainId),
-                GrainId = address.GrainId,
-                SiloAddress = address.SiloAddress,
-                ActivationId = address.ActivationId,
-            };
-        }
-    }
-
-    public class AzureTableGrainDirectoryOptions
-    {
-        /// <summary>
-        /// Connection string for Azure Storage
-        /// </summary>
-        [RedactConnectionString]
-        public string ConnectionString { get; set; }
-
-        /// <summary>
-        /// Table name for Azure Storage
-        /// </summary>
-        public string TableName { get; set; } = DEFAULT_TABLE_NAME;
-        public const string DEFAULT_TABLE_NAME = "GrainDirectory";
     }
 }
