@@ -98,6 +98,7 @@ namespace Orleans.GrainDirectory.AzureStorage
 
         public void Participate(ISiloLifecycle lifecycle)
         {
+
             lifecycle.Subscribe(nameof(AzureTableGrainDirectory), ServiceLifecycleStage.RuntimeInitialize, InitializeIfNeeded);
         }
     }

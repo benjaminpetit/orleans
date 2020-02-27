@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Orleans.Configuration;
+using Orleans.Configuration.Internal;
 using Orleans.GrainDirectory;
 using Orleans.GrainDirectory.AzureStorage;
 using Orleans.Runtime;
@@ -44,11 +45,15 @@ namespace Orleans.Hosting
             Action<OptionsBuilder<AzureTableGrainDirectoryOptions>> configureOptions)
         {
             configureOptions.Invoke(services.AddOptions<AzureTableGrainDirectoryOptions>());
-            return services
+            services
                 .AddTransient<IConfigurationValidator, AzureTableGrainDirectoryOptionsValidator>()
                 .ConfigureFormatter<AzureTableGrainDirectoryOptions>()
-                .AddSingleton<IGrainDirectory, AzureTableGrainDirectory>()
-                .AddSingleton<ILifecycleParticipant<ISiloLifecycle>, AzureTableGrainDirectory>();
+                .AddSingleton<AzureTableGrainDirectory>();
+
+            services.AddFromExisting<IGrainDirectory, AzureTableGrainDirectory>();
+            services.AddFromExisting<ILifecycleParticipant<ISiloLifecycle>, AzureTableGrainDirectory>();
+
+            return services;
         }
     }
 }
