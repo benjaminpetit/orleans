@@ -19,6 +19,7 @@ namespace Orleans.Runtime
 
         private readonly Dictionary<int, GrainClassData> implementationIndex;
         private readonly Dictionary<int, PlacementStrategy> placementStrategiesIndex;
+        private readonly Dictionary<int, string> directoriesIndex;
 
         [NonSerialized] // Client shouldn't need this
         private readonly Dictionary<string, string> primaryImplementations;
@@ -45,6 +46,7 @@ namespace Orleans.Runtime
             primaryImplementations = new Dictionary<string, string>();
             implementationIndex = new Dictionary<int, GrainClassData>();
             placementStrategiesIndex = new Dictionary<int, PlacementStrategy>();
+            directoriesIndex = new Dictionary<int, string>();
             unordered = new HashSet<int>();
             this.localTestMode = localTestMode;
             this.defaultPlacementStrategy = defaultPlacementStrategy;
@@ -90,9 +92,17 @@ namespace Orleans.Runtime
                     placementStrategiesIndex.Add(kvp.Key, kvp.Value);
                 }
             }
+
+            foreach (var kvp in map.directoriesIndex)
+            {
+                if (!directoriesIndex.ContainsKey(kvp.Key))
+                {
+                    directoriesIndex.Add(kvp.Key, kvp.Value);
+                }
+            }
         }
 
-        internal void AddEntry(Type iface, Type grain, PlacementStrategy placement, bool primaryImplementation)
+        internal void AddEntry(Type iface, Type grain, PlacementStrategy placement, string directory, bool primaryImplementation)
         {
             lock (this)
             {
@@ -107,6 +117,8 @@ namespace Orleans.Runtime
                     implementationIndex.Add(grainTypeCode, implementation);
                 if (!placementStrategiesIndex.ContainsKey(grainTypeCode))
                     placementStrategiesIndex.Add(grainTypeCode, placement);
+                if (!directoriesIndex.ContainsKey(grainTypeCode))
+                    directoriesIndex.Add(grainTypeCode, directory);
 
                 grainInterfaceData.AddImplementation(implementation, primaryImplementation);
                 if (primaryImplementation)
@@ -204,6 +216,21 @@ namespace Orleans.Runtime
                 var implementation = implementationIndex[typeCode];
                 grainClass = implementation.GetClassName(genericArguments);
                 placement = placementStrategiesIndex[typeCode];
+                return true;
+            }
+        }
+
+        internal bool TryGetDirectory(int typeCode, out string directory)
+        {
+            lock (this)
+            {
+                if (!directoriesIndex.ContainsKey(typeCode))
+                {
+                    directory = null;
+                    return false;
+                }
+
+                directory = directoriesIndex[typeCode];
                 return true;
             }
         }
