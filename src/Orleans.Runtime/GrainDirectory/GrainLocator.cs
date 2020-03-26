@@ -17,7 +17,7 @@ namespace Orleans.Runtime.GrainDirectory
     /// </summary>
     internal class GrainLocator : IGrainLocator, ILifecycleParticipant<ISiloLifecycle>, GrainLocator.ITestAccessor
     {
-        private readonly IGrainDirectory grainDirectory;
+        private readonly IGrainDirectoryResolver grainDirectoryResolver;
         private readonly DhtGrainLocator inClusterGrainLocator;
         private readonly IGrainDirectoryCache cache;
 
@@ -36,11 +36,11 @@ namespace Orleans.Runtime.GrainDirectory
         MembershipVersion ITestAccessor.LastMembershipVersion { get; set; }
 
         public GrainLocator(
-            IGrainDirectory grainDirectory,
+            IGrainDirectoryResolver grainDirectoryResolver,
             DhtGrainLocator inClusterGrainLocator,
             IClusterMembershipService clusterMembershipService)
         {
-            this.grainDirectory = grainDirectory;
+            this.grainDirectoryResolver = grainDirectoryResolver;
             this.inClusterGrainLocator = inClusterGrainLocator;
             this.clusterMembershipService = clusterMembershipService;
             this.cache = new LRUBasedGrainDirectoryCache(GrainDirectoryOptions.DEFAULT_CACHE_SIZE, GrainDirectoryOptions.DEFAULT_MAXIMUM_CACHE_TTL);
@@ -182,6 +182,8 @@ namespace Orleans.Runtime.GrainDirectory
             };
             lifecycle.Subscribe(nameof(GrainLocator), ServiceLifecycleStage.RuntimeGrainServices, OnStart, OnStop);
         }
+
+        private IGrainDirectory GetGrainDirectory(Grain)
 
         private async Task ListenToClusterChange()
         {

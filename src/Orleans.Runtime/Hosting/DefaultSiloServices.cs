@@ -120,6 +120,7 @@ namespace Orleans.Hosting
             services.AddSingleton<DhtGrainLocator>();
             if (services.FirstOrDefault(service => service.ServiceType == typeof(IGrainDirectory)) != null)
             {
+                services.AddSingleton<IGrainDirectoryResolver, GrainDirectoryResolver>();
                 services.AddSingleton<IGrainLocator, GrainLocator>();
                 services.AddFromExisting<ILifecycleParticipant<ISiloLifecycle>, GrainLocator>();
             }
