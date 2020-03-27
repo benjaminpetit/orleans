@@ -61,7 +61,7 @@ namespace Orleans.Runtime.GrainDirectory
 
             results = new List<ActivationAddress>();
 
-            var entry = await this.grainDirectory.Lookup(grainId.ToParsableString());
+            var entry = await GetGrainDirectory(grainId).Lookup(grainId.ToParsableString());
 
             // Nothing found
             if (entry == null)
@@ -73,7 +73,7 @@ namespace Orleans.Runtime.GrainDirectory
             if (this.knownDeadSilos.Contains(activationAddress.Silo))
             {
                 // Remove it from the directory
-                await this.grainDirectory.Unregister(entry);
+                await GetGrainDirectory(grainId).Unregister(entry);
             }
             else
             {
@@ -91,16 +91,17 @@ namespace Orleans.Runtime.GrainDirectory
                 return await this.inClusterGrainLocator.Register(address);
 
             var grainAddress = address.ToGrainAddress();
+            var grainId = address.Grain;
 
-            var result = await this.grainDirectory.Register(grainAddress);
+            var result = await GetGrainDirectory(grainId).Register(grainAddress);
             var activationAddress = result.ToActivationAddress();
 
             // Check if the entry point to a dead silo
             if (this.knownDeadSilos.Contains(activationAddress.Silo))
             {
                 // Remove outdated entry and retry to register
-                await this.grainDirectory.Unregister(result);
-                result = await this.grainDirectory.Register(grainAddress);
+                await GetGrainDirectory(grainId).Unregister(result);
+                result = await GetGrainDirectory(grainId).Register(grainAddress);
                 activationAddress = result.ToActivationAddress();
             }
 
@@ -146,7 +147,22 @@ namespace Orleans.Runtime.GrainDirectory
             try
             {
                 var grainAddresses = addresses.Select(addr => addr.ToGrainAddress()).ToList();
-                await this.grainDirectory.UnregisterMany(grainAddresses);
+                var activationsPerDirectory = new Dictionary<IGrainDirectory, List<ActivationAddress>>();
+
+                foreach (var address in addresses)
+                {
+                    var directory = GetGrainDirectory(address.Grain);
+                    if (!activationsPerDirectory.ContainsKey(directory))
+                        activationsPerDirectory.Add(directory, new List<ActivationAddress>());
+                    activationsPerDirectory[directory].Add(address);
+                }
+
+                var tasks = new List<Task>();
+                foreach (var kvp in activationsPerDirectory)
+                {
+                    tasks.Add(kvp.Key.UnregisterMany(kvp.Value.Select(addr => addr.ToGrainAddress()).ToList()));
+                }
+                await Task.WhenAll(tasks);
             }
             finally
             {
@@ -159,7 +175,7 @@ namespace Orleans.Runtime.GrainDirectory
         {
             try
             {
-                await this.grainDirectory.Unregister(address.ToGrainAddress());
+                await GetGrainDirectory(address.Grain).Unregister(address.ToGrainAddress());
             }
             finally
             {
@@ -183,7 +199,7 @@ namespace Orleans.Runtime.GrainDirectory
             lifecycle.Subscribe(nameof(GrainLocator), ServiceLifecycleStage.RuntimeGrainServices, OnStart, OnStop);
         }
 
-        private IGrainDirectory GetGrainDirectory(Grain)
+        private IGrainDirectory GetGrainDirectory(GrainId grainId) => this.grainDirectoryResolver.Resolve(grainId);
 
         private async Task ListenToClusterChange()
         {
