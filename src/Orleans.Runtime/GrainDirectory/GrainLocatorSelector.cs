@@ -12,10 +12,10 @@ namespace Orleans.Runtime.GrainDirectory
     internal class GrainLocatorSelector : IGrainLocator
     {
         private IGrainDirectoryResolver grainDirectoryResolver;
-        private GrainLocator cachedGrainLocator;
+        private CachedGrainLocator cachedGrainLocator;
         private DhtGrainLocator dhtGrainLocator;
 
-        public GrainLocatorSelector(IGrainDirectoryResolver grainDirectoryResolver, GrainLocator cachedGrainLocator, DhtGrainLocator dhtGrainLocator)
+        public GrainLocatorSelector(IGrainDirectoryResolver grainDirectoryResolver, CachedGrainLocator cachedGrainLocator, DhtGrainLocator dhtGrainLocator)
         {
             this.grainDirectoryResolver = grainDirectoryResolver;
             this.cachedGrainLocator = cachedGrainLocator;
@@ -56,7 +56,7 @@ namespace Orleans.Runtime.GrainDirectory
 
         private IGrainLocator GetGrainLocator(GrainId grainId)
         {
-            return IsUsingCustomGrainLocator(grainId)
+            return !grainId.IsClient && IsUsingCustomGrainLocator(grainId)
                 ? (IGrainLocator) this.cachedGrainLocator
                 : (IGrainLocator) this.dhtGrainLocator;
         }

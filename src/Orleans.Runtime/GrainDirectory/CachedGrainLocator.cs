@@ -13,9 +13,9 @@ using Orleans.Internal;
 namespace Orleans.Runtime.GrainDirectory
 {
     /// <summary>
-    /// Implementation of <see cref="IGrainLocator"/> that uses an <see cref="IGrainDirectory"/> store.
+    /// Implementation of <see cref="IGrainLocator"/> that uses <see cref="IGrainDirectory"/> stores.
     /// </summary>
-    internal class GrainLocator : IGrainLocator, ILifecycleParticipant<ISiloLifecycle>, GrainLocator.ITestAccessor
+    internal class CachedGrainLocator : IGrainLocator, ILifecycleParticipant<ISiloLifecycle>, CachedGrainLocator.ITestAccessor
     {
         private readonly IGrainDirectoryResolver grainDirectoryResolver;
         private readonly DhtGrainLocator inClusterGrainLocator;
@@ -35,7 +35,7 @@ namespace Orleans.Runtime.GrainDirectory
 
         MembershipVersion ITestAccessor.LastMembershipVersion { get; set; }
 
-        public GrainLocator(
+        public CachedGrainLocator(
             IGrainDirectoryResolver grainDirectoryResolver,
             DhtGrainLocator inClusterGrainLocator,
             IClusterMembershipService clusterMembershipService)
@@ -48,9 +48,6 @@ namespace Orleans.Runtime.GrainDirectory
 
         public async Task<List<ActivationAddress>> Lookup(GrainId grainId)
         {
-            if (grainId.IsClient)
-                return await this.inClusterGrainLocator.Lookup(grainId);
-
             List<ActivationAddress> results;
 
             // Check cache first
@@ -196,7 +193,7 @@ namespace Orleans.Runtime.GrainDirectory
                 if (listenToClusterChangeTask != default && !ct.IsCancellationRequested)
                     await listenToClusterChangeTask.WithCancellation(ct);
             };
-            lifecycle.Subscribe(nameof(GrainLocator), ServiceLifecycleStage.RuntimeGrainServices, OnStart, OnStop);
+            lifecycle.Subscribe(nameof(CachedGrainLocator), ServiceLifecycleStage.RuntimeGrainServices, OnStart, OnStop);
         }
 
         private IGrainDirectory GetGrainDirectory(GrainId grainId) => this.grainDirectoryResolver.Resolve(grainId);
@@ -228,8 +225,12 @@ namespace Orleans.Runtime.GrainDirectory
 
                 if (deadSilos.Count > 0)
                 {
-                    await this.grainDirectory.UnregisterSilos(deadSilos)
-                        .WithCancellation(this.shutdownToken.Token);
+                    var tasks = new List<Task>();
+                    foreach (var directory in this.grainDirectoryResolver.Directories)
+                    {
+                        tasks.Add(directory.UnregisterSilos(deadSilos));
+                    }
+                    await Task.WhenAll(tasks).WithCancellation(this.shutdownToken.Token);
                 }
 
                 ((ITestAccessor)this).LastMembershipVersion = snapshot.Version;

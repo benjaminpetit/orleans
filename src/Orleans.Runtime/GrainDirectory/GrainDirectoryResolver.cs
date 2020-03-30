@@ -11,6 +11,8 @@ namespace Orleans.Runtime.GrainDirectory
 {
     internal interface IGrainDirectoryResolver
     {
+        IReadOnlyCollection<IGrainDirectory> Directories { get; }
+
         IGrainDirectory Resolve(GrainId grainId);
     }
 
@@ -19,6 +21,8 @@ namespace Orleans.Runtime.GrainDirectory
         private readonly Dictionary<string, IGrainDirectory> directoryPerName = new Dictionary<string, IGrainDirectory>();
         private readonly CachedReadConcurrentDictionary<int, IGrainDirectory> directoryPerTypeCode = new CachedReadConcurrentDictionary<int, IGrainDirectory>();
         private readonly GrainTypeManager grainTypeManager;
+
+        public IReadOnlyCollection<IGrainDirectory> Directories => this.directoryPerName.Values;
 
         public GrainDirectoryResolver(IServiceProvider serviceProvider, GrainTypeManager grainTypeManager)
         {
@@ -33,6 +37,8 @@ namespace Orleans.Runtime.GrainDirectory
                 this.directoryPerName.Add(svc.Key, svc.GetService(serviceProvider));
             }
         }
+
+        public static bool HasAnyRegisteredGrainDirectory(IServiceCollection services) => services.Any(svc => svc.ServiceType == typeof(IKeyedService<string, IGrainDirectory>));
 
         public IGrainDirectory Resolve(GrainId grainId) => this.directoryPerTypeCode.GetOrAdd(grainId.TypeCode, GetGrainDirectoryPerTypeCode);
 
@@ -50,6 +56,10 @@ namespace Orleans.Runtime.GrainDirectory
 
             if (!this.directoryPerName.TryGetValue(directoryName, out var directory))
             {
+                if (string.Equals(GrainDirectoryAttribute.DEFAULT_GRAIN_DIRECTORY, directoryName, StringComparison.InvariantCulture))
+                {
+                    return default;
+                }
                 throw new OrleansException($"Unexpected: Cannot find an the directory named {directoryName}");
             }
 
