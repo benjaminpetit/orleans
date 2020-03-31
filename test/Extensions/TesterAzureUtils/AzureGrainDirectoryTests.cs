@@ -33,7 +33,7 @@ namespace Tester.AzureUtils
 
             var loggerFactory = TestingUtils.CreateDefaultLoggerFactory("AzureGrainDirectoryTests.log");
 
-            var directory = new AzureTableGrainDirectory(Options.Create(directoryOptions), Options.Create(clusterOptions), loggerFactory);
+            var directory = new AzureTableGrainDirectory(directoryOptions, Options.Create(clusterOptions), loggerFactory);
             directory.InitializeIfNeeded().GetAwaiter().GetResult();
 
             return directory;

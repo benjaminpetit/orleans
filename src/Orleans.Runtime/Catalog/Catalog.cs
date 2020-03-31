@@ -1004,12 +1004,14 @@ namespace Orleans.Runtime
                         Where((ActivationData d) => d.IsUsingGrainDirectory).
                         Select((ActivationData d) => ActivationAddress.GetAddress(LocalSilo, d.Grain, d.ActivationId)).ToList();
 
-                    if (activationsToDeactivate.Count > 0)
-                    {
-                        await scheduler.RunOrQueueTask(() =>
-                            this.grainLocator.UnregisterMany(activationsToDeactivate, UnregistrationCause.Force),
-                            this);
-                    }
+                    // TODO
+                    await Task.Delay(10);
+                    //if (activationsToDeactivate.Count > 0)
+                    //{
+                    //    await scheduler.RunOrQueueTask(() =>
+                    //        this.grainLocator.UnregisterMany(activationsToDeactivate, UnregistrationCause.Force),
+                    //        this);
+                    //}
                 }
                 catch (Exception exc)
                 {
@@ -1379,6 +1381,7 @@ namespace Orleans.Runtime
             return datas;
         }
 
+        // TODO move this logic in the LocalGrainDirectory
         private void OnSiloStatusChange(SiloAddress updatedSilo, SiloStatus status)
         { 
             // ignore joining events and also events on myself.

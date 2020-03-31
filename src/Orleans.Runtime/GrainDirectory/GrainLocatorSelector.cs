@@ -61,6 +61,6 @@ namespace Orleans.Runtime.GrainDirectory
                 : (IGrainLocator) this.dhtGrainLocator;
         }
 
-        private bool IsUsingCustomGrainLocator(GrainId grainId) => this.grainDirectoryResolver.Resolve(grainId) == default;
+        private bool IsUsingCustomGrainLocator(GrainId grainId) => this.grainDirectoryResolver.Resolve(grainId) != default;
     }
 }

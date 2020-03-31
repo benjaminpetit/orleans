@@ -19,7 +19,7 @@ using Orleans.Runtime.GrainDirectory;
 using Orleans.Serialization;
 using Tester.HostBuilder.Fakes;
 using TestExtensions;
-using UnitTests.Grains.Directory;
+using UnitTests.Grains.Directories;
 using Xunit;
 using Xunit.Abstractions;
 

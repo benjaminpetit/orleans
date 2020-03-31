@@ -48,13 +48,13 @@ namespace Orleans.GrainDirectory.AzureStorage
         }
 
         public AzureTableGrainDirectory(
-            IOptions<AzureTableGrainDirectoryOptions> directoryOptions,
+            AzureTableGrainDirectoryOptions directoryOptions,
             IOptions<ClusterOptions> clusterOptions,
             ILoggerFactory loggerFactory)
         {
             this.tableDataManager = new AzureTableDataManager<GrainDirectoryEntity>(
-                tableName: directoryOptions.Value.TableName,
-                storageConnectionString: directoryOptions.Value.ConnectionString,
+                tableName: directoryOptions.TableName,
+                storageConnectionString: directoryOptions.ConnectionString,
                 loggerFactory.CreateLogger<AzureTableDataManager<GrainDirectoryEntity>>());
             this.clusterId = clusterOptions.Value.ClusterId;
         }
