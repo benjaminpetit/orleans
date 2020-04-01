@@ -78,6 +78,7 @@ namespace Orleans.Runtime
         private static readonly TimeSpan UnregisterTimeout = TimeSpan.FromSeconds(1);
 
         private readonly IGrainLocator grainLocator;
+        private readonly IGrainDirectoryResolver grainDirectoryResolver;
         private readonly ILocalGrainDirectory directory;
         private readonly OrleansTaskScheduler scheduler;
         private readonly ActivationDirectory activations;
@@ -107,6 +108,7 @@ namespace Orleans.Runtime
         public Catalog(
             ILocalSiloDetails localSiloDetails,
             IGrainLocator grainLocator,
+            IGrainDirectoryResolver grainDirectoryResolver,
             ILocalGrainDirectory grainDirectory,
             GrainTypeManager typeManager,
             OrleansTaskScheduler scheduler,
@@ -131,6 +133,7 @@ namespace Orleans.Runtime
             this.LocalSilo = localSiloDetails.SiloAddress;
             this.localSiloName = localSiloDetails.Name;
             this.grainLocator = grainLocator;
+            this.grainDirectoryResolver = grainDirectoryResolver;
             this.directory = grainDirectory;
             this.activations = activationDirectory;
             this.scheduler = scheduler;
@@ -1408,7 +1411,7 @@ namespace Orleans.Runtime
                         try
                         {
                             var activationData = activation.Value;
-                            if (!activationData.IsUsingGrainDirectory) continue;
+                            if (!activationData.IsUsingGrainDirectory || grainDirectoryResolver.Resolve(activationData.Grain) == default) continue;
                             if (!updatedSilo.Equals(directory.GetPrimaryForGrain(activationData.Grain))) continue;
 
                             lock (activationData)
