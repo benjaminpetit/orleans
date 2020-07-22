@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Azure.EventHubs;
 using Orleans.Providers.Streams.Common;
+using Orleans.Runtime;
 using Orleans.Serialization;
 using Orleans.Streams;
 
@@ -54,18 +55,17 @@ namespace Orleans.ServiceBus.Providers
             return new EventHubSequenceTokenV2("", cachedMessage.SequenceNumber, 0);
         }
 
-        public virtual EventData ToQueueMessage<T>(Guid streamGuid, string streamNamespace, IEnumerable<T> events, StreamSequenceToken token, Dictionary<string, object> requestContext)
+        public virtual EventData ToQueueMessage<T>(StreamId streamId, IEnumerable<T> events, StreamSequenceToken token, Dictionary<string, object> requestContext)
         {
             if (token != null) throw new ArgumentException("EventHub streams currently does not support non-null StreamSequenceToken.", nameof(token));
-            return EventHubBatchContainer.ToEventData(this.serializationManager, streamGuid, streamNamespace, events, requestContext);
+            return EventHubBatchContainer.ToEventData(this.serializationManager, streamId, events, requestContext);
         }
 
         public virtual CachedMessage FromQueueMessage(StreamPosition streamPosition, EventData queueMessage, DateTime dequeueTime, Func<int, ArraySegment<byte>> getSegment)
         {
             return new CachedMessage()
             {
-                StreamGuid = streamPosition.StreamIdentity.Guid,
-                StreamNamespace = streamPosition.StreamIdentity.Namespace != null ? string.Intern(streamPosition.StreamIdentity.Namespace) : null,
+                StreamId = streamPosition.StreamId, 
                 SequenceNumber = queueMessage.SystemProperties.SequenceNumber,
                 EventIndex = streamPosition.SequenceToken.EventIndex,
                 EnqueueTimeUtc = queueMessage.SystemProperties.EnqueuedTimeUtc,
@@ -79,10 +79,9 @@ namespace Orleans.ServiceBus.Providers
             Guid streamGuid =
             Guid.Parse(queueMessage.SystemProperties.PartitionKey);
             string streamNamespace = queueMessage.GetStreamNamespaceProperty();
-            IStreamIdentity stremIdentity = new StreamIdentity(streamGuid, streamNamespace);
             StreamSequenceToken token =
                 new EventHubSequenceTokenV2(queueMessage.SystemProperties.Offset, queueMessage.SystemProperties.SequenceNumber, 0);
-            return new StreamPosition(stremIdentity, token);
+            return new StreamPosition(StreamId.Create(streamNamespace, streamGuid), token);
         }
 
         /// <summary>
