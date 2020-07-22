@@ -43,15 +43,27 @@ namespace Orleans.Runtime
 
         public static StreamId Create(byte[] ns, byte[] key)
         {
-            var fullKeysBytes = new byte[ns.Length + key.Length];
-            Array.Copy(ns, 0, fullKeysBytes, 0, ns.Length);
-            Array.Copy(key, 0, fullKeysBytes, ns.Length, key.Length);
-            return new StreamId(fullKeysBytes, (ushort) ns.Length);
+            if (key == null)
+                throw new ArgumentNullException(nameof(key));
+
+            if (ns != null)
+            {
+                var fullKeysBytes = new byte[ns.Length + key.Length];
+                Array.Copy(ns, 0, fullKeysBytes, 0, ns.Length);
+                Array.Copy(key, 0, fullKeysBytes, ns.Length, key.Length);
+                return new StreamId(fullKeysBytes, (ushort) ns.Length);
+            }
+            else
+            {
+                var fullKeysBytes = new byte[key.Length];
+                Array.Copy(key, 0, fullKeysBytes, 0, key.Length);
+                return new StreamId(fullKeysBytes, 0);
+            }
         }
 
-        public static StreamId Create(string ns, Guid key) => Create(Encoding.UTF8.GetBytes(ns), key.ToByteArray());
+        public static StreamId Create(string ns, Guid key) => Create(ns != null ? Encoding.UTF8.GetBytes(ns) : null, key.ToByteArray());
 
-        public static StreamId Create(string ns, string key) => Create(Encoding.UTF8.GetBytes(ns), Encoding.UTF8.GetBytes(key));
+        public static StreamId Create(string ns, string key) => Create(ns != null ? Encoding.UTF8.GetBytes(ns) : null, Encoding.UTF8.GetBytes(key));
 
         public static StreamId Create(IStreamIdentity streamIdentity) => Create(streamIdentity.Namespace, streamIdentity.Guid);
 
