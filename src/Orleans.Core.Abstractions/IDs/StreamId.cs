@@ -70,7 +70,7 @@ namespace Orleans.Runtime
     [Immutable]
     [Serializable]
     [StructLayout(LayoutKind.Auto)]
-    internal readonly struct InternalStreamId
+    internal readonly struct InternalStreamId : IEquatable<InternalStreamId>, IComparable<InternalStreamId>, ISerializable
     {
         public string ProviderName { get; }
 
@@ -82,7 +82,23 @@ namespace Orleans.Runtime
             StreamId = streamId;
         }
 
+        private InternalStreamId(SerializationInfo info, StreamingContext context)
+        {
+            ProviderName = (string) info.GetValue("pvn", typeof(string));
+            StreamId = (StreamId) info.GetValue("sid", typeof(StreamId));
+        }
+
         public static implicit operator StreamId(InternalStreamId internalStreamId) => internalStreamId.StreamId;
+
+        public bool Equals(InternalStreamId other) => StreamId.Equals(other) && ProviderName.Equals(other.ProviderName);
+
+        public int CompareTo(InternalStreamId other) => throw new NotImplementedException();
+
+        public void GetObjectData(SerializationInfo info, StreamingContext context)
+        {
+            info.AddValue("pvn", ProviderName);
+            info.AddValue("sid", StreamId, typeof(StreamId));
+        }
     }
 
     // TODO bpetit remove
