@@ -224,7 +224,7 @@ namespace Orleans.ServiceBus.Providers
             Dictionary<string, object> requestContext)
         {
             EventData eventData = this.dataAdapter.ToQueueMessage(streamId, events, token, requestContext);
-            return this.client.SendAsync(eventData, streamId.ToString());
+            return this.client.SendAsync(eventData, streamId.GetGuid().ToString()); // TODO BPETIT REMOVE
         }
 
         /// <summary>
