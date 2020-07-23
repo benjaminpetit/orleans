@@ -40,12 +40,12 @@ namespace Orleans.Streams
             try
             {
                 var guid = new Guid(streamId.Key.ToArray());
-                var ns = Encoding.UTF8.GetString(streamId.Namespace.ToArray());
+                var ns = streamId.GetNamespace();
                 return GetStreamId(guid, providerName, ns);
             }
             catch (ArgumentException ex)
             {
-                throw new InvalidOperationException($"Cannot convert ${streamId} to a  LegacyStreamId", ex);
+                throw new InvalidOperationException($"Cannot convert StreamId {streamId} to a  LegacyStreamId", ex);
             }
         }
 

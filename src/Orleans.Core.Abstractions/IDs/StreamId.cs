@@ -77,6 +77,22 @@ namespace Orleans.Runtime
             info.AddValue("ki", this.keyIndex);
             info.AddValue("fh", this.hash);
         }
+
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            sb.Append("[NS: ");
+
+            if (!Namespace.IsEmpty)
+                sb.Append(Encoding.UTF8.GetString(Namespace.ToArray()));
+            else
+                sb.Append("null");
+
+            // TODO BPETIT REMOVE
+            sb.Append($", KEY: {new Guid(Key.ToArray())}]");
+
+            return sb.ToString();
+        }
     }
 
     [Immutable]
@@ -118,10 +134,16 @@ namespace Orleans.Runtime
     {
         public static Guid GetGuid(this StreamId streamId) => new Guid(streamId.Key.ToArray());
 
-        public static string GetNamespace(this StreamId streamId) => Encoding.UTF8.GetString(streamId.Namespace.ToArray());
+        public static string GetNamespace(this StreamId streamId)
+        {
+            if (streamId.Namespace.IsEmpty)
+                return null;
+
+            return Encoding.UTF8.GetString(streamId.Namespace.ToArray());
+        }
 
         internal static Guid GetGuid(this InternalStreamId internalStreamId) => new Guid(internalStreamId.StreamId.Key.ToArray());
 
-        internal static string GetNamespace(this InternalStreamId internalStreamId) => Encoding.UTF8.GetString(internalStreamId.StreamId.Namespace.ToArray());
+        internal static string GetNamespace(this InternalStreamId internalStreamId) => internalStreamId.StreamId.GetNamespace();
     }
 }
