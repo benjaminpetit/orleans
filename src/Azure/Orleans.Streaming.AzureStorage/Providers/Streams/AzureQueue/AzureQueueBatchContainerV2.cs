@@ -47,7 +47,7 @@ namespace Orleans.Providers.Streams.AzureQueue
         {
             if (events == null) throw new ArgumentNullException(nameof(events), "Message contains no events");
 
-            StreamId = StreamId;
+            StreamId = streamId;
             this.events = events;
             this.requestContext = requestContext;
         }
