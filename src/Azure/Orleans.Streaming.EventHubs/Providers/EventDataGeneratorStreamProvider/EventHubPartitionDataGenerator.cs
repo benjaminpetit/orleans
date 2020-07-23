@@ -85,7 +85,7 @@ namespace Orleans.ServiceBus.Providers.Testing
         
         public static Func<IStreamIdentity, IStreamDataGenerator<EventData>> CreateFactory(IServiceProvider services)
         {
-            return (streamIdentity) => ActivatorUtilities.CreateInstance<SimpleStreamEventDataGenerator>(services, streamIdentity);
+            return (streamIdentity) => ActivatorUtilities.CreateInstance<SimpleStreamEventDataGenerator>(services, StreamId.Create(streamIdentity));
         }
     }
 
