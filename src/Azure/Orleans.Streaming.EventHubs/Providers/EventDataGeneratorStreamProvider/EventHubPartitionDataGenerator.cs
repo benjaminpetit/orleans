@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Azure.EventHubs;
+using Azure.Messaging.EventHubs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Orleans.Configuration;
@@ -57,18 +57,13 @@ namespace Orleans.ServiceBus.Providers.Testing
                 var eventData = EventHubBatchContainer.ToEventData<int>(this.serializationManager, this.StreamId.Guid, this.StreamId.Namespace,
                     this.GenerateEvent(this.SequenceNumberCounter.Value), RequestContextExtensions.Export(this.serializationManager));
 
-                //set partition key
-                eventData.SetPartitionKey(this.StreamId.Guid.ToString());
+               var wrapper = new WrappedEventData(eventData.Body, eventData.Properties, eventData.SystemProperties,
+                    partitionKey: StreamId.Guid.ToString(),
+                    offset: DateTime.UtcNow.Ticks,
+                    sequenceNumber: this.SequenceNumberCounter.Value);
 
-                //set offset
-                DateTime now = DateTime.UtcNow;
-                var offSet = this.StreamId.Guid.ToString() + now.ToString();
-                eventData.SetOffset(offSet);
-                //set sequence number
-                eventData.SetSequenceNumber(this.SequenceNumberCounter.Value);
-                //set enqueue time
-                eventData.SetEnqueuedTimeUtc(now);
-                eventDataList.Add(eventData);
+                eventDataList.Add(wrapper);
+
                 this.logger.Info($"Generate data of SequemceNumber {SequenceNumberCounter.Value} for stream {this.StreamId.Namespace}-{this.StreamId.Guid}");
             }
 
@@ -86,6 +81,14 @@ namespace Orleans.ServiceBus.Providers.Testing
         public static Func<IStreamIdentity, IStreamDataGenerator<EventData>> CreateFactory(IServiceProvider services)
         {
             return (streamIdentity) => ActivatorUtilities.CreateInstance<SimpleStreamEventDataGenerator>(services, streamIdentity);
+        }
+
+
+        private class WrappedEventData : EventData
+        {
+            public WrappedEventData(ReadOnlyMemory<byte> eventBody, IDictionary<string, object> properties = null, IReadOnlyDictionary<string, object> systemProperties = null, long sequenceNumber = long.MinValue, long offset = long.MinValue, DateTimeOffset enqueuedTime = default, string partitionKey = null) : base(eventBody, properties, systemProperties, sequenceNumber, offset, enqueuedTime, partitionKey)
+            {
+            }
         }
     }
 
