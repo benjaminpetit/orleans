@@ -31,7 +31,7 @@ namespace Orleans.Storage
         private ILogger logger;
         private readonly string name;
         private AzureBlobStorageOptions options;
-        private SerializationManager serializationManager;
+        private IGrainStorageSerializer grainStorageSerializer;
         private IGrainFactory grainFactory;
         private ITypeResolver typeResolver;
         private readonly IServiceProvider services;
@@ -40,7 +40,7 @@ namespace Orleans.Storage
         public AzureBlobGrainStorage(
             string name,
             AzureBlobStorageOptions options,
-            SerializationManager serializationManager,
+            IGrainStorageSerializer grainStorageSerializer,
             IGrainFactory grainFactory,
             ITypeResolver typeResolver,
             IServiceProvider services,
@@ -48,7 +48,7 @@ namespace Orleans.Storage
         {
             this.name = name;
             this.options = options;
-            this.serializationManager = serializationManager;
+            this.grainStorageSerializer = grainStorageSerializer;
             this.grainFactory = grainFactory;
             this.typeResolver = typeResolver;
             this.services = services;
@@ -262,7 +262,7 @@ namespace Orleans.Storage
             }
             else
             {
-                data = this.serializationManager.SerializeToByteArray(grainState);
+                data = this.grainStorageSerializer.Serialize(typeof(object), grainState).ToArray();
                 mimeType = "application/octet-stream";
             }
 
@@ -288,7 +288,7 @@ namespace Orleans.Storage
             }
             else
             {
-                result = this.serializationManager.DeserializeFromByteArray<object>(contents);
+                result = this.grainStorageSerializer.Deserialize(typeof(object), contents);
             }
 
             return result;
@@ -300,7 +300,8 @@ namespace Orleans.Storage
         public static IGrainStorage Create(IServiceProvider services, string name)
         {
             var optionsMonitor = services.GetRequiredService<IOptionsMonitor<AzureBlobStorageOptions>>();
-            return ActivatorUtilities.CreateInstance<AzureBlobGrainStorage>(services, name, optionsMonitor.Get(name));
+            var serializer = services.GetRequiredServiceByName<IGrainStorageSerializer>(name);
+            return ActivatorUtilities.CreateInstance<AzureBlobGrainStorage>(services, name, optionsMonitor.Get(name), serializer);
         }
     }
 }
