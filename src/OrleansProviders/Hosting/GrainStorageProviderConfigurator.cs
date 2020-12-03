@@ -57,10 +57,28 @@ namespace Orleans.Hosting
         /// Use the Orleans built-in serializer.
         /// Fast, but not backward compatible, and hard to use outside Orleans
         /// </summary>
-        public static void UseOrleansSerializer(this IGrainStorageProviderConfigurator self)
+        public static void UseOrleansSerializer(this IGrainStorageProviderConfigurator self, bool useJsonAsFallback = true)
         {
             self.ConfigureDelegate.Invoke(sp => sp.TryAddSingleton<OrleansGrainStorageSerializer>());
-            self.ConfigureSerializer((sp, name) => sp.GetService<OrleansGrainStorageSerializer>());
+            if (useJsonAsFallback)
+            {
+                self.ConfigureSerializer((sp, name) => sp.GetService<OrleansGrainStorageSerializer>());
+            }
+            else
+            {
+                self.ConfigureDelegate.Invoke(sp => sp.TryAddSingleton<JsonGrainStorageSerializer>());
+                self.ConfigureSerializer((sp, name) => sp.GetService<GrainStorageSerializer>());
+            }
+        }
+
+        /// <summary>
+        /// Use the Orleans built-in serializer.
+        /// Fast, but not backward compatible, and hard to use outside Orleans
+        /// </summary>
+        public static void UseJsonSerializer(this IGrainStorageProviderConfigurator self, bool useOrleansBinaryAsFallback = true)
+        {
+            self.ConfigureDelegate.Invoke(sp => sp.TryAddSingleton<JsonGrainStorageSerializer>());
+            self.ConfigureSerializer((sp, name) => sp.GetService<JsonGrainStorageSerializer>());
         }
 
         /// <summary>

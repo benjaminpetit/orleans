@@ -67,12 +67,14 @@ namespace Orleans.Storage
                 var blob = container.GetBlobClient(blobName);
 
                 byte[] contents;
+                string mimeType;
                 try
                 {
                     using var stream = new MemoryStream();
                     var response = await blob.DownloadToAsync(stream).ConfigureAwait(false);
                     grainState.ETag = response.Headers.ETag.ToString();
                     contents = stream.ToArray();
+                    mimeType = response.Headers.ContentType;
                 }
                 catch (RequestFailedException exception) when (exception.IsBlobNotFound())
                 {
@@ -96,7 +98,7 @@ namespace Orleans.Storage
                     grainState.RecordExists = true;
                 }
 
-                grainState.State = this.ConvertFromStorageFormat(contents);
+                grainState.State = this.ConvertFromStorageFormat(contents, ConvertMimeTypeToTag(mimeType));
 
                 if (this.logger.IsEnabled(LogLevel.Trace)) this.logger.Trace((int)AzureProviderErrorCode.AzureBlobProvider_Storage_DataRead, "Read: GrainType={0} Grainid={1} ETag={2} from BlobName={3} in Container={4}", grainType, grainId, grainState.ETag, blobName, container.Name);
             }
@@ -262,8 +264,9 @@ namespace Orleans.Storage
             }
             else
             {
-                data = this.grainStorageSerializer.Serialize(typeof(object), grainState).ToArray();
-                mimeType = "application/octet-stream";
+                var (tag, output) = this.grainStorageSerializer.Serialize(typeof(object), grainState);
+                data = output.ToArray();
+                mimeType = ConvertTagToMimeType(tag);
             }
 
             return (data, mimeType);
@@ -273,12 +276,13 @@ namespace Orleans.Storage
         /// Deserialize from the configured storage format, either binary or JSON.
         /// </summary>
         /// <param name="contents">The serialized contents.</param>
+        /// <param name="tag">The tag to apss to the serializer.</param>
         /// <remarks>
         /// See:
         /// http://msdn.microsoft.com/en-us/library/system.web.script.serialization.javascriptserializer.aspx
         /// for more on the JSON serializer.
         /// </remarks>
-        private object ConvertFromStorageFormat(byte[] contents)
+        private object ConvertFromStorageFormat(byte[] contents, string tag)
         {
             object result;
             if (this.options.UseJson)
@@ -288,10 +292,30 @@ namespace Orleans.Storage
             }
             else
             {
-                result = this.grainStorageSerializer.Deserialize(typeof(object), contents);
+                result = this.grainStorageSerializer.Deserialize(typeof(object), contents, tag);
             }
 
             return result;
+        }
+
+        private string ConvertTagToMimeType(string tag)
+        {
+            return tag switch
+            {
+                WellKnownSerializerTag.Json => "application/json",
+                WellKnownSerializerTag.Xml => "application/xml",
+                _ => "application/octet-stream",
+            };
+        }
+
+        private string ConvertMimeTypeToTag(string mimeType)
+        {
+            return mimeType switch
+            {
+                "application/json" => WellKnownSerializerTag.Json,
+                "application/xml" => WellKnownSerializerTag.Xml,
+                _ => WellKnownSerializerTag.Binary,
+            };
         }
     }
 

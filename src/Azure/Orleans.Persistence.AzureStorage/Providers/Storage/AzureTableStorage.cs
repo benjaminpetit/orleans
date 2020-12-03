@@ -202,8 +202,8 @@ namespace Orleans.Storage
             else
             {
                 // Convert to binary format
-
-                var data = this.storageSerializer.Serialize(grainState.GetType(), grainState).ToArray();
+                var (tag, output) = this.storageSerializer.Serialize(grainState.GetType(), grainState);
+                var data = output.ToArray();
 
                 if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("Writing binary data size = {0} for grain id = Partition={1} / Row={2}",
                     data.Length, entity.PartitionKey, entity.RowKey);
@@ -211,7 +211,7 @@ namespace Orleans.Storage
                 dataSize = data.Length;
 
                 properties = SplitBinaryData(data).Select(t => new EntityProperty(t.ToArray()));
-                basePropertyName = BINARY_DATA_PROPERTY_NAME;
+                basePropertyName = ConvertTagToPropertyName(tag);
             }
 
             CheckMaxDataSize(dataSize, MAX_DATA_CHUNK_SIZE * MAX_DATA_CHUNKS_COUNT);
@@ -350,7 +350,7 @@ namespace Orleans.Storage
                 if (binaryData.Length > 0)
                 {
                     // Rehydrate
-                    dataValue = this.storageSerializer.Deserialize(typeof(object), binaryData);
+                    dataValue = this.storageSerializer.Deserialize(typeof(object), binaryData, ConvertPropertyNameToTag(BINARY_DATA_PROPERTY_NAME));
                 }
                 else if (!string.IsNullOrEmpty(stringData))
                 {
@@ -502,6 +502,26 @@ namespace Orleans.Storage
         public void Participate(ISiloLifecycle lifecycle)
         {
             lifecycle.Subscribe(OptionFormattingUtilities.Name<AzureTableGrainStorage>(this.name), this.options.InitStage, Init, Close);
+        }
+
+        private static string ConvertTagToPropertyName(string tag)
+        {
+            // TODO handle xml?
+            return tag switch
+            {
+                WellKnownSerializerTag.Json => STRING_DATA_PROPERTY_NAME,
+                _ => BINARY_DATA_PROPERTY_NAME
+            };
+        }
+
+        private static string ConvertPropertyNameToTag(string propertyName)
+        {
+            // TODO handle xml?
+            return propertyName switch
+            {
+                STRING_DATA_PROPERTY_NAME => WellKnownSerializerTag.Json,
+                _ => WellKnownSerializerTag.Binary
+            };
         }
     }
 
