@@ -80,6 +80,7 @@ namespace Orleans.Runtime
         private readonly ILocalGrainDirectory directory;
         private readonly OrleansTaskScheduler scheduler;
         private readonly ActivationDirectory activations;
+        private readonly LRU<ActivationAddress, Exception> failedActivations = new LRU<ActivationAddress, Exception>(1000, TimeSpan.FromSeconds(5), null);
         private IStreamProviderRuntime providerRuntime;
         private IServiceProvider serviceProvider;
         private readonly ILogger logger;
@@ -491,7 +492,7 @@ namespace Orleans.Runtime
                 {
                     return result;
                 }
-                
+
                 int typeCode = address.Grain.TypeCode;
                 string actualGrainType = null;
 
@@ -558,6 +559,12 @@ namespace Orleans.Runtime
             // Did not find and did not start placing new
             if (result == null)
             {
+                if (failedActivations.TryGetValue(address, out var ex))
+                {
+                    logger.Warn(ErrorCode.Catalog_ActivationException, "Call to an activation that failed during OnActivateAsync()");
+                    throw ex;
+                }
+
                 var msg = String.Format("Non-existent activation: {0}, grain type: {1}.",
                                            address.ToFullString(), grainType);
                 if (logger.IsEnabled(LogLevel.Debug)) logger.Debug(ErrorCode.CatalogNonExistingActivation2, msg);
@@ -703,6 +710,7 @@ namespace Orleans.Runtime
                     UnregisterMessageTarget(activation);
                     if (initStage == ActivationInitializationStage.InvokeActivate)
                     {
+                        failedActivations.Add(activation.Address, exception);
                         activation.SetState(ActivationState.FailedToActivate);
                         logger.Warn(ErrorCode.Catalog_Failed_InvokeActivate, string.Format("Failed to InvokeActivate for {0}.", activation), exception);
                         // Reject all of the messages queued for this activation.

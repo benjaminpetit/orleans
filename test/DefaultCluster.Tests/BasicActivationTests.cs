@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -71,16 +72,30 @@ namespace DefaultCluster.Tests.General
         {
             bool failed;
             long key = 0;
+            var tasks = new List<Task>();
             try
             {
                 // Key values of -2 are not allowed in this case
                 ITestGrain fail = this.GrainFactory.GetGrain<ITestGrain>(-2);
-                key = await fail.GetKey();
+                for (int i = 0; i < 10000; i++)
+                {
+                    tasks.Add(fail.GetKey());
+                }
                 failed = false;
+                await Task.WhenAll(tasks);
             }
-            catch (ArgumentException)
+            catch (Exception ex)
             {
+                ex.ToString();
                 failed = true;
+                var exceptions = tasks
+                    .Select(t => t.Exception.InnerException)
+                    .Where(e => e.GetType() != typeof(ArgumentException))
+                    .ToList();
+                foreach (var t in tasks)
+                {
+                    Assert.Equal(typeof(ArgumentException), t.Exception.InnerException.GetType());
+                }
             }
 
             if (!failed) Assert.True(false, "Should have failed, but instead returned " + key);

@@ -139,9 +139,7 @@ namespace Orleans.Runtime
                     var nea = ex as Catalog.NonExistentActivationException;
                     if (nea == null)
                     {
-                        var str = $"Error creating activation for {message.NewGrainType}. Message {message}";
-                        logger.Error(ErrorCode.Dispatcher_ErrorCreatingActivation, str, ex);
-                        throw new OrleansException(str, ex);
+                        throw;
                     }
 
                     if (nea.IsStatelessWorker)

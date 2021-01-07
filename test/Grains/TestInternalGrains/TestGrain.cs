@@ -22,15 +22,17 @@ namespace UnitTests.Grains
             this.logger = loggerFactory.CreateLogger($"{this.GetType().Name}-{this.IdentityString}");
         }
 
-        public override Task OnActivateAsync()
+        public override async Task OnActivateAsync()
         {
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+
             if (this.GetPrimaryKeyLong() == -2)
                 throw new ArgumentException("Primary key cannot be -2 for this test case");
 
             label = this.GetPrimaryKeyLong().ToString();
             logger.Info("OnActivateAsync");
 
-            return base.OnActivateAsync();
+            await base.OnActivateAsync();
         }
 
         public override Task OnDeactivateAsync()
