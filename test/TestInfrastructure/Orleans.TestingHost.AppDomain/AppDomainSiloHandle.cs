@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.Remoting;
+using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -69,10 +70,17 @@ namespace Orleans.TestingHost
 
                 return Task.FromResult(retValue);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 UnloadAppDomain(appDomain);
-                throw;
+                try
+                {
+                    throw;
+                }
+                catch (SerializationException)
+                {
+                    throw new Exception(ex.ToString());
+                }
             }
         }
 
