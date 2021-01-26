@@ -73,14 +73,11 @@ namespace Orleans.TestingHost
             catch (Exception ex)
             {
                 UnloadAppDomain(appDomain);
-                try
-                {
+                
+                if (ex.GetType().IsSerializable)
                     throw;
-                }
-                catch (SerializationException)
-                {
+                else
                     throw new Exception(ex.ToString());
-                }
             }
         }
 
