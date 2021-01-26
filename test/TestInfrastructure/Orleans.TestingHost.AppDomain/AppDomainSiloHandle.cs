@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.Remoting;
-using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -70,12 +69,10 @@ namespace Orleans.TestingHost
 
                 return Task.FromResult(retValue);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 UnloadAppDomain(appDomain);
-
-                // Avoid issue when exception is not serializable
-                throw new Exception(ex.ToString());
+                throw;
             }
         }
 

@@ -17,8 +17,18 @@ namespace Orleans.TestingHost
         /// <param name="serializedConfigurationSources">Silo config data to be used for this silo.</param>
         public AppDomainSiloHost(string appDomainName, string serializedConfigurationSources)
         {
-            var deserializedSources = TestClusterHostFactory.DeserializeConfigurationSources(serializedConfigurationSources);
-            this.host = TestClusterHostFactory.CreateSiloHost(appDomainName, deserializedSources);
+            try
+            {
+                var deserializedSources = TestClusterHostFactory.DeserializeConfigurationSources(serializedConfigurationSources);
+                this.host = TestClusterHostFactory.CreateSiloHost(appDomainName, deserializedSources);
+            }
+            catch (Exception ex)
+            {
+                if (ex.GetType().IsSerializable)
+                    throw;
+                else
+                    throw new Exception(ex.ToString());
+            }
         }
 
         /// <summary> SiloAddress for this silo. </summary>
@@ -28,7 +38,20 @@ namespace Orleans.TestingHost
         public SiloAddress GatewayAddress => this.host.Services.GetRequiredService<ILocalSiloDetails>().GatewayAddress;
 
         /// <summary>Starts the silo</summary>
-        public void Start() => this.host.StartAsync().GetAwaiter().GetResult();
+        public void Start()
+        {
+            try
+            {
+                this.host.StartAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                if (ex.GetType().IsSerializable)
+                    throw;
+                else
+                    throw new Exception(ex.ToString());
+            }
+        }
 
         /// <summary>Gracefully shuts down the silo</summary>
         public void Shutdown()
