@@ -24,10 +24,7 @@ namespace Orleans.TestingHost
             }
             catch (Exception ex)
             {
-                if (ex.GetType().IsSerializable)
-                    throw;
-                else
-                    throw new Exception(ex.ToString());
+                throw new Exception(ex.ToString());
             }
         }
 
@@ -46,10 +43,7 @@ namespace Orleans.TestingHost
             }
             catch (Exception ex)
             {
-                if (ex.GetType().IsSerializable)
-                    throw;
-                else
-                    throw new Exception(ex.ToString());
+                throw new Exception(ex.ToString());
             }
         }
 
