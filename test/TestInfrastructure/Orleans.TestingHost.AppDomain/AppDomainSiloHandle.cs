@@ -6,6 +6,7 @@ using System.Runtime.Remoting;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using Orleans.TestingHost.Utils;
 
 namespace Orleans.TestingHost
 {
@@ -55,6 +56,9 @@ namespace Orleans.TestingHost
                     new object[] { });
 
                 appDomain.UnhandledException += ReportUnobservedException;
+
+                // Force TLS 1.2
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
 
                 siloHost.Start();
 
