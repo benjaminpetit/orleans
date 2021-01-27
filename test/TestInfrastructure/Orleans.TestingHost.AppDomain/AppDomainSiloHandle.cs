@@ -69,10 +69,10 @@ namespace Orleans.TestingHost
 
                 return Task.FromResult(retValue);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 UnloadAppDomain(appDomain);
-                throw;
+                throw new Exception(ex.ToString());
             }
         }
 
