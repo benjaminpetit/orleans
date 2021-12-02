@@ -23,10 +23,9 @@ namespace Orleans.EventSourcing
         /// </summary>
         /// <param name="factory"> The adaptor factory to use </param>
         /// <param name="state"> The initial state of the view </param>
-        /// <param name="grainTypeName"> The type name of the grain </param>
         /// <param name="grainStorage"> The grain storage, if needed </param>
         /// <param name="services"> Protocol services </param>
-        protected abstract void InstallAdaptor(ILogViewAdaptorFactory factory, object state, string grainTypeName, IGrainStorage grainStorage, ILogConsistencyProtocolServices services);
+        protected abstract void InstallAdaptor(ILogViewAdaptorFactory factory, object state, IGrainStorage grainStorage, ILogConsistencyProtocolServices services);
 
         /// <summary>
         /// Gets the default adaptor factory to use, or null if there is no default 
@@ -84,7 +83,7 @@ namespace Orleans.EventSourcing
 
             TView state = (TView)Activator.CreateInstance(typeof(TView));
 
-            this.InstallAdaptor(factory, state, this.GetType().FullName, grainStorage, svc);
+            this.InstallAdaptor(factory, state, grainStorage, svc);
         }
 
         private ILogViewAdaptorFactory SetupLogConsistencyProvider(IGrainContext activationContext)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Orleans;
 using System.Collections;
 using System.Collections.Generic;
@@ -30,7 +30,7 @@ namespace UnitTests.StorageTests.Relational.TestDataSets
                 (Func<IInternalGrainFactory, GrainReference>)
                 (grainFactory =>
                     RandomUtilities.GetRandomGrainReference<string, int>(grainFactory, Symbols, StringLength, keyExtension: false)),
-                new GrainState<TestStateGeneric1<TStateData>>
+                new GrainState<TestStateGeneric1<TStateData>>("TStateData")
                 {
                     State = new TestStateGeneric1<TStateData>
                     {
@@ -46,7 +46,7 @@ namespace UnitTests.StorageTests.Relational.TestDataSets
                 GrainTypeGenerator.GetGrainType<string>(),
                 (Func<IInternalGrainFactory, GrainReference>)
                 (grainFactory => RandomUtilities.GetRandomGrainReference<string, int>(grainFactory, Symbols, StringLength, true)),
-                new GrainState<TestStateGeneric1<TStateData>>
+                new GrainState<TestStateGeneric1<TStateData>>("TStateData")
                 {
                     State = new TestStateGeneric1<TStateData>
                     {
@@ -62,7 +62,7 @@ namespace UnitTests.StorageTests.Relational.TestDataSets
                 GrainTypeGenerator.GetGrainType<string>(),
                 (Func<IInternalGrainFactory, GrainReference>)
                 (grainFactory => RandomUtilities.GetRandomGrainReference<string, int>(grainFactory, Symbols, StringLength, true)),
-                new GrainState<TestStateGeneric1<TStateData>>
+                new GrainState<TestStateGeneric1<TStateData>>("TStateData")
                 {
                     State = new TestStateGeneric1<TStateData>
                     {

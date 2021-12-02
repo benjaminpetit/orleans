@@ -227,18 +227,18 @@ namespace Tester.AzureUtils.Persistence
                 MockCallsOnly = true
             }, NullLoggerFactory.Instance, this.providerRuntime.ServiceProvider.GetService<IGrainFactory>());
 
-            GrainReference reference = (GrainReference)this.fixture.InternalGrainFactory.GetGrain(LegacyGrainId.NewId());
+            var grainId = GrainId.Create(testName, Guid.NewGuid().ToString());
             var state = TestStoreGrainState.NewRandomState();
             Stopwatch sw = new Stopwatch();
             sw.Start();
-            await store.WriteStateAsync(testName, reference, state);
+            await store.WriteStateAsync(grainId, state);
             TimeSpan writeTime = sw.Elapsed;
             this.output.WriteLine("{0} - Write time = {1}", store.GetType().FullName, writeTime);
             Assert.True(writeTime >= expectedLatency, $"Write: Expected minimum latency = {expectedLatency} Actual = {writeTime}");
 
             sw.Restart();
-            var storedState = new GrainState<TestStoreGrainState>();
-            await store.ReadStateAsync(testName, reference, storedState);
+            var storedState = new GrainState<TestStoreGrainState>("TestStoreGrainState");
+            await store.ReadStateAsync(grainId, storedState);
             TimeSpan readTime = sw.Elapsed;
             this.output.WriteLine("{0} - Read time = {1}", store.GetType().FullName, readTime);
             Assert.True(readTime >= expectedLatency, $"Read: Expected minimum latency = {expectedLatency} Actual = {readTime}");
@@ -276,18 +276,18 @@ namespace Tester.AzureUtils.Persistence
         private async Task Test_PersistenceProvider_Read(string grainTypeName, IGrainStorage store,
             GrainState<TestStoreGrainState> grainState = null, GrainId grainId = default)
         {
-            var reference = (GrainReference)this.fixture.InternalGrainFactory.GetGrain(grainId.IsDefault ? (GrainId)LegacyGrainId.NewId() : grainId);
+            grainId = grainId.IsDefault ? GrainId.Create("Test_PersistenceProvider_Read", Guid.NewGuid().ToString()) : grainId;
 
             if (grainState == null)
             {
-                grainState = new GrainState<TestStoreGrainState>(new TestStoreGrainState());
+                grainState = new GrainState<TestStoreGrainState>("TestStoreGrainState", new TestStoreGrainState());
             }
-            var storedGrainState = new GrainState<TestStoreGrainState>(new TestStoreGrainState());
+            var storedGrainState = new GrainState<TestStoreGrainState>("TestStoreGrainState", new TestStoreGrainState());
 
             Stopwatch sw = new Stopwatch();
             sw.Start();
 
-            await store.ReadStateAsync(grainTypeName, reference, storedGrainState);
+            await store.ReadStateAsync(grainId, storedGrainState);
 
             TimeSpan readTime = sw.Elapsed;
             this.output.WriteLine("{0} - Read time = {1}", store.GetType().FullName, readTime);
@@ -301,7 +301,7 @@ namespace Tester.AzureUtils.Persistence
         private async Task<GrainState<TestStoreGrainState>> Test_PersistenceProvider_WriteRead(string grainTypeName,
             IGrainStorage store, GrainState<TestStoreGrainState> grainState = null, GrainId grainId = default)
         {
-            GrainReference reference = (GrainReference)this.fixture.InternalGrainFactory.GetGrain(grainId.IsDefault ? (GrainId)LegacyGrainId.NewId() : grainId);
+            grainId = grainId.IsDefault ? GrainId.Create("Test_PersistenceProvider_WriteRead", Guid.NewGuid().ToString()) : grainId;
 
             if (grainState == null)
             {
@@ -311,16 +311,16 @@ namespace Tester.AzureUtils.Persistence
             Stopwatch sw = new Stopwatch();
             sw.Start();
 
-            await store.WriteStateAsync(grainTypeName, reference, grainState);
+            await store.WriteStateAsync(grainId, grainState);
 
             TimeSpan writeTime = sw.Elapsed;
             sw.Restart();
 
-            var storedGrainState = new GrainState<TestStoreGrainState>
+            var storedGrainState = new GrainState<TestStoreGrainState>("TestStoreGrainState")
             {
                 State = new TestStoreGrainState()
             };
-            await store.ReadStateAsync(grainTypeName, reference, storedGrainState);
+            await store.ReadStateAsync(grainId, storedGrainState);
             TimeSpan readTime = sw.Elapsed;
             this.output.WriteLine("{0} - Write time = {1} Read time = {2}", store.GetType().FullName, writeTime, readTime);
             Assert.Equal(grainState.State.A, storedGrainState.State.A);
@@ -333,7 +333,7 @@ namespace Tester.AzureUtils.Persistence
         private async Task<GrainState<TestStoreGrainState>> Test_PersistenceProvider_WriteClearRead(string grainTypeName,
             IGrainStorage store, GrainState<TestStoreGrainState> grainState = null, GrainId grainId = default)
         {
-            GrainReference reference = (GrainReference)this.fixture.InternalGrainFactory.GetGrain(grainId.IsDefault ? (GrainId)LegacyGrainId.NewId() : grainId);
+            grainId = grainId.IsDefault ? GrainId.Create("Test_PersistenceProvider_WriteClearRead", Guid.NewGuid().ToString()) : grainId;
 
             if (grainState == null)
             {
@@ -343,18 +343,18 @@ namespace Tester.AzureUtils.Persistence
             Stopwatch sw = new Stopwatch();
             sw.Start();
 
-            await store.WriteStateAsync(grainTypeName, reference, grainState);
+            await store.WriteStateAsync(grainId, grainState);
 
             TimeSpan writeTime = sw.Elapsed;
             sw.Restart();
 
-            await store.ClearStateAsync(grainTypeName, reference, grainState);
+            await store.ClearStateAsync(grainId, grainState);
 
-            var storedGrainState = new GrainState<TestStoreGrainState>
+            var storedGrainState = new GrainState<TestStoreGrainState>("TestStoreGrainState")
             {
                 State = new TestStoreGrainState()
             };
-            await store.ReadStateAsync(grainTypeName, reference, storedGrainState);
+            await store.ReadStateAsync(grainId, storedGrainState);
             TimeSpan readTime = sw.Elapsed;
             this.output.WriteLine("{0} - Write time = {1} Read time = {2}", store.GetType().FullName, writeTime, readTime);
             Assert.NotNull(storedGrainState.State);
@@ -382,7 +382,7 @@ namespace Tester.AzureUtils.Persistence
 
             internal static GrainState<TestStoreGrainStateWithCustomJsonProperties> NewRandomState(int? aPropertyLength = null)
             {
-                return new GrainState<TestStoreGrainStateWithCustomJsonProperties>
+                return new GrainState<TestStoreGrainStateWithCustomJsonProperties>("TestStoreGrainStateWithCustomJsonProperties")
                 {
                     State = new TestStoreGrainStateWithCustomJsonProperties
                     {

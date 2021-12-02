@@ -1,4 +1,4 @@
-﻿using Orleans;
+using Orleans;
 using Orleans.Runtime;
 using Orleans.Storage;
 using System.Threading.Tasks;
@@ -119,6 +119,7 @@ namespace UnitTests.StorageTests.Relational
 
         internal async Task Relational_ChangeStorageFormatFromBinaryToJsonInMemory_WriteRead(string grainType, GrainReference grainReference, GrainState<TestState1> grainState)
         {
+            grainState.Name = grainType;
             //Use the default binary serializer and deserializer. Now the data in the storage is in binary format.
             var initialVersion = grainState.ETag;
             await PersistenceStorageTests.Store_WriteRead(grainType, grainReference, grainState);

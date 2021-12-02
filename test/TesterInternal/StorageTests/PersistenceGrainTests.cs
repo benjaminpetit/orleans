@@ -1197,8 +1197,7 @@ namespace UnitTests.StorageTests
             {
                 Val = newValue,
                 Name = "Field1",
-                GrainType = grainType,
-                GrainReference = (GrainReference) grain,
+                GrainId = grain.GetGrainId(),
                 StateType = typeof(PersistenceTestGrainState)
             };
             mgmtGrain.SendControlCommandToProvider(providerTypeFullName,

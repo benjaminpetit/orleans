@@ -133,6 +133,9 @@ namespace DefaultCluster.Tests.StorageTests
                 };
             }
 
+            [Id(3)]
+            public string Name { get; set; }
+
             [Id(0)]
             public object State { get; set; }
 

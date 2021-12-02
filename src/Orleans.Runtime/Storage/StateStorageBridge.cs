@@ -45,7 +45,7 @@ namespace Orleans.Core
             this.name = name;
             this.grainRef = grainRef;
             this.store = store;
-            this.grainState = new GrainState<TState>(Activator.CreateInstance<TState>());
+            this.grainState = new GrainState<TState>(name, Activator.CreateInstance<TState>());
         }
 
         /// <summary>
@@ -60,7 +60,7 @@ namespace Orleans.Core
             {
                 GrainRuntime.CheckRuntimeContext();
 
-                await store.ReadStateAsync(name, grainRef, grainState);
+                await store.ReadStateAsync(grainRef.GrainId, grainState);
 
                 StorageStatisticsGroup.OnStorageRead(name, grainRef, sw.Elapsed);
             }
@@ -93,7 +93,7 @@ namespace Orleans.Core
                 GrainRuntime.CheckRuntimeContext();
 
                 Stopwatch sw = Stopwatch.StartNew();
-                await store.WriteStateAsync(name, grainRef, grainState);
+                await store.WriteStateAsync(grainRef.GrainId, grainState);
                 sw.Stop();
                 StorageStatisticsGroup.OnStorageWrite(name, grainRef, sw.Elapsed);
             }
@@ -123,7 +123,7 @@ namespace Orleans.Core
 
                 Stopwatch sw = Stopwatch.StartNew();
                 // Clear (most likely Delete) state from external storage
-                await store.ClearStateAsync(name, grainRef, grainState);
+                await store.ClearStateAsync(grainRef.GrainId, grainState);
                 sw.Stop();
 
                 // Reset the in-memory copy of the state

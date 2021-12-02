@@ -1,6 +1,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Orleans;
 using Orleans.Hosting;
 using Orleans.Runtime;
 using Orleans.Streams;
@@ -41,7 +42,8 @@ namespace UnitTests.StreamingTests
             this.fixture.Logger.Info("************************ RegisterConsumerFaultTest *********************************");
             var streamId = new InternalStreamId("ProviderName", StreamId.Create("StreamNamespace", Guid.NewGuid()));
             var pubSubGrain = this.fixture.GrainFactory.GetGrain<IPubSubRendezvousGrain>(streamId.ToString());
-            var faultGrain = this.fixture.GrainFactory.GetGrain<IStorageFaultGrain>(typeof(PubSubRendezvousGrain).FullName);
+            var grainId = pubSubGrain.GetGrainId();
+            var faultGrain = this.fixture.GrainFactory.GetGrain<IStorageFaultGrain>(grainId.Type.ToString());
 
             // clean call, to make sure everything is happy and pubsub has state.
             await pubSubGrain.RegisterConsumer(GuidId.GetGuidId(Guid.NewGuid()), streamId, null, null);
@@ -49,7 +51,7 @@ namespace UnitTests.StreamingTests
             Assert.Equal(1, consumers);
 
             // inject fault
-            await faultGrain.AddFaultOnWrite(pubSubGrain as GrainReference, new ApplicationException("Write"));
+            await faultGrain.AddFaultOnWrite(grainId, new ApplicationException("Write"));
 
             // expect exception when registering a new consumer
             await Assert.ThrowsAsync<OrleansException>(
@@ -67,7 +69,8 @@ namespace UnitTests.StreamingTests
             this.fixture.Logger.Info("************************ UnregisterConsumerFaultTest *********************************");
             var streamId = new InternalStreamId("ProviderName", StreamId.Create("StreamNamespace", Guid.NewGuid()));
             var pubSubGrain = this.fixture.GrainFactory.GetGrain<IPubSubRendezvousGrain>(streamId.ToString());
-            var faultGrain = this.fixture.GrainFactory.GetGrain<IStorageFaultGrain>(typeof(PubSubRendezvousGrain).FullName);
+            var grainId = pubSubGrain.GetGrainId();
+            var faultGrain = this.fixture.GrainFactory.GetGrain<IStorageFaultGrain>(grainId.Type.ToString());
 
             // Add two consumers so when we remove the first it does a storage write, not a storage clear.
             GuidId subscriptionId1 = GuidId.GetGuidId(Guid.NewGuid());
@@ -78,7 +81,7 @@ namespace UnitTests.StreamingTests
             Assert.Equal(2, consumers);
 
             // inject fault
-            await faultGrain.AddFaultOnWrite(pubSubGrain as GrainReference, new ApplicationException("Write"));
+            await faultGrain.AddFaultOnWrite(grainId, new ApplicationException("Write"));
 
             // expect exception when unregistering a consumer
             await Assert.ThrowsAsync<OrleansException>(
@@ -90,7 +93,7 @@ namespace UnitTests.StreamingTests
             Assert.Equal(1, consumers);
 
             // inject clear fault, because removing last consumer should trigger a clear storage call.
-            await faultGrain.AddFaultOnClear(pubSubGrain as GrainReference, new ApplicationException("Write"));
+            await faultGrain.AddFaultOnClear(grainId, new ApplicationException("Write"));
 
             // expect exception when unregistering a consumer
             await Assert.ThrowsAsync<OrleansException>(
@@ -121,7 +124,7 @@ namespace UnitTests.StreamingTests
             Assert.Equal(1, producers);
 
             // inject fault
-            await faultGrain.AddFaultOnWrite(pubSubGrain as GrainReference, new ApplicationException("Write"));
+            await faultGrain.AddFaultOnWrite((pubSubGrain as GrainReference).GrainId, new ApplicationException("Write"));
 
             // expect exception when registering a new producer
             await Assert.ThrowsAsync<OrleansException>(
@@ -154,7 +157,7 @@ namespace UnitTests.StreamingTests
             Assert.Equal(2, producers);
 
             // inject fault
-            await faultGrain.AddFaultOnWrite(pubSubGrain as GrainReference, new ApplicationException("Write"));
+            await faultGrain.AddFaultOnWrite((pubSubGrain as GrainReference).GrainId, new ApplicationException("Write"));
 
             // expect exception when unregistering a producer
             await Assert.ThrowsAsync<OrleansException>(
@@ -166,7 +169,7 @@ namespace UnitTests.StreamingTests
             Assert.Equal(1, producers);
 
             // inject clear fault, because removing last producers should trigger a clear storage call.
-            await faultGrain.AddFaultOnClear(pubSubGrain as GrainReference, new ApplicationException("Write"));
+            await faultGrain.AddFaultOnClear((pubSubGrain as GrainReference).GrainId, new ApplicationException("Write"));
 
             // expect exception when unregistering a consumer
             await Assert.ThrowsAsync<OrleansException>(

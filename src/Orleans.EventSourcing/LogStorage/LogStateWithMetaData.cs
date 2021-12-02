@@ -13,6 +13,9 @@ namespace Orleans.EventSourcing.LogStorage
     [GenerateSerializer]
     public class LogStateWithMetaDataAndETag<TEntry> : IGrainState<LogStateWithMetaData<TEntry>> where TEntry : class
     {
+        [Id(3)]
+        public string Name { get; set; }
+
         /// <summary>
         /// Gets and Sets StateAndMetaData
         /// </summary>

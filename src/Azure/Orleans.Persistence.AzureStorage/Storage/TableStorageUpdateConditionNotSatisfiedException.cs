@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.Serialization;
+using Orleans.Runtime;
 
 namespace Orleans.Storage
 {
@@ -17,15 +18,13 @@ namespace Orleans.Storage
         /// </summary>
         public TableStorageUpdateConditionNotSatisfiedException(
             string errorMsg,
-            string grainType,
-            string grainId,
+            GrainId grainId,
             string tableName,
             string storedEtag,
             string currentEtag,
             Exception storageException)
             : base(errorMsg, storedEtag, currentEtag, storageException)
         {
-            this.GrainType = grainType;
             this.GrainId = grainId;
             this.TableName = tableName;
         }
@@ -34,13 +33,12 @@ namespace Orleans.Storage
         /// Exception thrown when an azure table storage exception is thrown due to update conditions not being satisfied.
         /// </summary>
         public TableStorageUpdateConditionNotSatisfiedException(
-            string grainType,
-            string grainId,
+            GrainId grainId,
             string tableName,
             string storedEtag,
             string currentEtag,
             Exception storageException)
-            : this(CreateDefaultMessage(grainType, grainId, tableName, storedEtag, currentEtag), grainType, grainId, tableName, storedEtag, currentEtag, storageException)
+            : this(CreateDefaultMessage(grainId, tableName, storedEtag, currentEtag), grainId, tableName, storedEtag, currentEtag, storageException)
         {
         }
 
@@ -48,18 +46,12 @@ namespace Orleans.Storage
         /// Id of grain
         /// </summary>
         [Id(0)]
-        public string GrainId { get; }
-
-        /// <summary>
-        /// Type of grain that throw this exception
-        /// </summary>
-        [Id(1)]
-        public string GrainType { get; }
+        public GrainId GrainId { get; }
 
         /// <summary>
         /// Azure table name
         /// </summary>
-        [Id(2)]
+        [Id(1)]
         public string TableName { get; }
 
         /// <summary>
@@ -86,13 +78,12 @@ namespace Orleans.Storage
         }
 
         private static string CreateDefaultMessage(
-            string grainType,
-            string grainId,
+            GrainId grainId,
             string tableName,
             string storedEtag,
             string currentEtag)
         {
-            return string.Format(DefaultMessageFormat, grainType, grainId, tableName, storedEtag, currentEtag);
+            return string.Format(DefaultMessageFormat, grainId, tableName, storedEtag, currentEtag);
         }
 
         /// <summary>
@@ -101,8 +92,7 @@ namespace Orleans.Storage
         protected TableStorageUpdateConditionNotSatisfiedException(SerializationInfo info, StreamingContext context)
             : base(info, context)
         {
-            this.GrainType = info.GetString("GrainType");
-            this.GrainId = info.GetString("GrainId");
+            this.GrainId = (GrainId) info.GetValue("GrainId", typeof(GrainId));
             this.TableName = info.GetString("TableName");
         }
 
@@ -111,7 +101,6 @@ namespace Orleans.Storage
         {
             if (info == null) throw new ArgumentNullException(nameof(info));
 
-            info.AddValue("GrainType", this.GrainType);
             info.AddValue("GrainId", this.GrainId);
             info.AddValue("TableName", this.TableName);
             base.GetObjectData(info, context);

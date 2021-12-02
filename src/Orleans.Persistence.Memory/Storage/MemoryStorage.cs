@@ -58,9 +58,9 @@ namespace Orleans.Storage
 
         /// <summary> Read state data function for this storage provider. </summary>
         /// <see cref="IGrainStorage.ReadStateAsync"/>
-        public virtual async Task ReadStateAsync<T>(string grainType, GrainReference grainReference, IGrainState<T> grainState)
+        public virtual async Task ReadStateAsync<T>(GrainId grainId, IGrainState<T> grainState)
         {
-            var keys = MakeKeys(grainType, grainReference);
+            var keys = MakeKeys(grainId, grainState.Name);
 
             if (logger.IsEnabled(LogLevel.Trace)) logger.LogTrace("Read Keys={Keys}", StorageProviderUtils.PrintKeys(keys));
 
@@ -77,9 +77,9 @@ namespace Orleans.Storage
 
         /// <summary> Write state data function for this storage provider. </summary>
         /// <see cref="IGrainStorage.WriteStateAsync"/>
-        public virtual async Task WriteStateAsync<T>(string grainType, GrainReference grainReference, IGrainState<T> grainState)
+        public virtual async Task WriteStateAsync<T>(GrainId grainId, IGrainState<T> grainState)
         {
-            var keys = MakeKeys(grainType, grainReference);
+            var keys = MakeKeys(grainId, grainState.Name);
             string key = HierarchicalKeyStore.MakeStoreKey(keys);
             if (logger.IsEnabled(LogLevel.Trace)) logger.LogTrace("Write {Write} ", StorageProviderUtils.PrintOneWrite(keys, grainState.State, grainState.ETag));
             IMemoryStorageGrain storageGrain = GetStorageGrain(key);
@@ -96,9 +96,9 @@ namespace Orleans.Storage
 
         /// <summary> Delete / Clear state data function for this storage provider. </summary>
         /// <see cref="IGrainStorage.ClearStateAsync"/>
-        public virtual async Task ClearStateAsync<T>(string grainType, GrainReference grainReference, IGrainState<T> grainState)
+        public virtual async Task ClearStateAsync<T>(GrainId grainId, IGrainState<T> grainState)
         {
-            var keys = MakeKeys(grainType, grainReference);
+            var keys = MakeKeys(grainId, grainState.Name);
             if (logger.IsEnabled(LogLevel.Trace)) logger.LogTrace("Delete Keys={Keys} Etag={Etag}", StorageProviderUtils.PrintKeys(keys), grainState.ETag);
             string key = HierarchicalKeyStore.MakeStoreKey(keys);
             IMemoryStorageGrain storageGrain = GetStorageGrain(key);
@@ -114,12 +114,12 @@ namespace Orleans.Storage
             }
         }
 
-        private static Tuple<string, string>[] MakeKeys(string grainType, GrainReference grain)
+        private static Tuple<string, string>[] MakeKeys(GrainId grainId, string stateName)
         {
             return new[]
             {
-                Tuple.Create("GrainType", grainType),
-                Tuple.Create("GrainId", grain.GrainId.ToString())
+                Tuple.Create("StateName", stateName),
+                Tuple.Create("GrainId", grainId.ToString())
             };
         }
 

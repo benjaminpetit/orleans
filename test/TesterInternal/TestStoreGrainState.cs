@@ -18,7 +18,7 @@ namespace UnitTests.Persistence
 
         internal static GrainState<TestStoreGrainState> NewRandomState(int? aPropertyLength = null)
         {
-            return new GrainState<TestStoreGrainState>
+            return new GrainState<TestStoreGrainState>("TestStoreGrainState")
             {
                 State = new TestStoreGrainState
                 {

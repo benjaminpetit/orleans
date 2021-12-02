@@ -24,11 +24,10 @@ namespace Orleans.EventSourcing.StateStorage
         /// <summary>
         /// Initialize a StorageProviderLogViewAdaptor class
         /// </summary>
-        public LogViewAdaptor(ILogViewAdaptorHost<TLogView, TLogEntry> host, TLogView initialState, IGrainStorage globalGrainStorage, string grainTypeName, ILogConsistencyProtocolServices services)
+        public LogViewAdaptor(ILogViewAdaptorHost<TLogView, TLogEntry> host, TLogView initialState, IGrainStorage globalGrainStorage, ILogConsistencyProtocolServices services)
             : base(host, initialState, services)
         {
             this.globalGrainStorage = globalGrainStorage;
-            this.grainTypeName = grainTypeName;
         }
 
 
@@ -36,7 +35,6 @@ namespace Orleans.EventSourcing.StateStorage
 
 
         IGrainStorage globalGrainStorage;
-        string grainTypeName;        // stores the confirmed state including metadata
         GrainStateWithMetaDataAndETag<TLogView> GlobalStateCache;
 
         /// <inheritdoc/>
@@ -78,7 +76,7 @@ namespace Orleans.EventSourcing.StateStorage
 
                     var readState = new GrainStateWithMetaDataAndETag<TLogView>();
 
-                    await globalGrainStorage.ReadStateAsync(grainTypeName, Services.GrainReference, readState);
+                    await globalGrainStorage.ReadStateAsync(Services.GrainReference.GrainId, readState);
 
                     GlobalStateCache = readState;
 
@@ -123,7 +121,7 @@ namespace Orleans.EventSourcing.StateStorage
                 // for manual testing
                 //await Task.Delay(5000);
 
-                await globalGrainStorage.WriteStateAsync(grainTypeName, Services.GrainReference, nextglobalstate);
+                await globalGrainStorage.WriteStateAsync(Services.GrainReference.GrainId, nextglobalstate);
 
                 batchsuccessfullywritten = true;
 
@@ -149,7 +147,7 @@ namespace Orleans.EventSourcing.StateStorage
 
                     try
                     {
-                        await globalGrainStorage.ReadStateAsync(grainTypeName, Services.GrainReference, GlobalStateCache);
+                        await globalGrainStorage.ReadStateAsync(Services.GrainReference.GrainId, GlobalStateCache);
 
                         Services.Log(LogLevel.Debug, "read success {0}", GlobalStateCache);
 

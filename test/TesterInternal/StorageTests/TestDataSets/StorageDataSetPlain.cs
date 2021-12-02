@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Orleans;
 using System.Collections;
 using System.Collections.Generic;
@@ -30,19 +30,19 @@ namespace UnitTests.StorageTests.Relational.TestDataSets
             {
                 GrainTypeGenerator.GetGrainType<TGrainKey>(),
                 (Func<IInternalGrainFactory, GrainReference>)(grainFactory => RandomUtilities.GetRandomGrainReference<TGrainKey>(grainFactory, extensionKey: false)),
-                new GrainState<TestState1> { State = new TestState1 { A = RandomUtilities.GetRandomCharacters(Symbols, StringLength), B = 1, C = 4 } }
+                new GrainState<TestState1>("TestState1", new TestState1 { A = RandomUtilities.GetRandomCharacters(Symbols, StringLength), B = 1, C = 4 })
             },
             new object[]
             {
                 GrainTypeGenerator.GetGrainType<TGrainKey>(),
                 (Func<IInternalGrainFactory, GrainReference>)(grainFactory => RandomUtilities.GetRandomGrainReference<TGrainKey>(grainFactory, true)),
-                new GrainState<TestState1> { State = new TestState1 { A = RandomUtilities.GetRandomCharacters(Symbols, StringLength), B = 2, C = 5 } }
+                new GrainState<TestState1>("TestState1", new TestState1 { A = RandomUtilities.GetRandomCharacters(Symbols, StringLength), B = 2, C = 5 })
             },
             new object[]
             {
                 GrainTypeGenerator.GetGrainType<TGrainKey>(),
                 (Func<IInternalGrainFactory, GrainReference>)(grainFactory => RandomUtilities.GetRandomGrainReference<TGrainKey>(grainFactory, true)),
-                new GrainState<TestState1> { State = new TestState1 { A = RandomUtilities.GetRandomCharacters(Symbols, StringLength), B = 3, C = 6 } }
+                new GrainState<TestState1>("TestState1", new TestState1 { A = RandomUtilities.GetRandomCharacters(Symbols, StringLength), B = 3, C = 6 })
             }
         };
 

@@ -1,4 +1,4 @@
-﻿
+
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -14,9 +14,9 @@ namespace Orleans.TestingHost
     public class StorageFaultGrain : Grain, IStorageFaultGrain
     {
         private ILogger logger;
-        private Dictionary<GrainReference, Exception> readFaults;
-        private Dictionary<GrainReference, Exception> writeFaults;
-        private Dictionary<GrainReference, Exception> clearfaults;
+        private Dictionary<GrainId, Exception> readFaults;
+        private Dictionary<GrainId, Exception> writeFaults;
+        private Dictionary<GrainId, Exception> clearfaults;
 
         /// <summary>
         /// This method is called at the end of the process of activating a grain.
@@ -27,62 +27,62 @@ namespace Orleans.TestingHost
         {
             await base.OnActivateAsync();
             logger = this.ServiceProvider.GetService<ILoggerFactory>().CreateLogger($"{typeof (StorageFaultGrain).FullName}-{IdentityString}-{RuntimeIdentity}");
-            readFaults = new Dictionary<GrainReference, Exception>();
-            writeFaults = new Dictionary<GrainReference, Exception>();
-            clearfaults = new Dictionary<GrainReference, Exception>();
+            readFaults = new Dictionary<GrainId, Exception>();
+            writeFaults = new Dictionary<GrainId, Exception>();
+            clearfaults = new Dictionary<GrainId, Exception>();
             logger.Info("Activate.");
         }
 
         /// <summary>
         /// Adds a storage exception to be thrown when the referenced grain reads state from a storage provider
         /// </summary>
-        /// <param name="grainReference"></param>
+        /// <param name="grainId"></param>
         /// <param name="exception"></param>
         /// <returns></returns>
-        public Task AddFaultOnRead(GrainReference grainReference, Exception exception)
+        public Task AddFaultOnRead(GrainId grainId, Exception exception)
         {
-            readFaults.Add(grainReference, exception);
-            logger.Info($"Added ReadState fault for {grainReference}.");
+            readFaults.Add(grainId, exception);
+            logger.Info($"Added ReadState fault for {grainId}.");
             return Task.CompletedTask;
         }
 
         /// <summary>
         /// Adds a storage exception to be thrown when the referenced grain writes state to a storage provider
         /// </summary>
-        /// <param name="grainReference"></param>
+        /// <param name="grainId"></param>
         /// <param name="exception"></param>
         /// <returns></returns>
-        public Task AddFaultOnWrite(GrainReference grainReference, Exception exception)
+        public Task AddFaultOnWrite(GrainId grainId, Exception exception)
         {
-            writeFaults.Add(grainReference, exception);
-            logger.Info($"Added WriteState fault for {grainReference}.");
+            writeFaults.Add(grainId, exception);
+            logger.Info($"Added WriteState fault for {grainId}.");
             return Task.CompletedTask;
         }
 
         /// <summary>
         /// Adds a storage exception to be thrown when the referenced grain clears state in a storage provider
         /// </summary>
-        /// <param name="grainReference"></param>
+        /// <param name="grainId"></param>
         /// <param name="exception"></param>
         /// <returns></returns>
-        public Task AddFaultOnClear(GrainReference grainReference, Exception exception)
+        public Task AddFaultOnClear(GrainId grainId, Exception exception)
         {
-            clearfaults.Add(grainReference, exception);
-            logger.Info($"Added ClearState fault for {grainReference}.");
+            clearfaults.Add(grainId, exception);
+            logger.Info($"Added ClearState fault for {grainId}.");
             return Task.CompletedTask;
         }
 
         /// <summary>
         /// Throws a storage exception if one has been added for the grain reference for reading.
         /// </summary>
-        /// <param name="grainReference"></param>
+        /// <param name="grainId"></param>
         /// <returns></returns>
-        public Task OnRead(GrainReference grainReference)
+        public Task OnRead(GrainId grainId)
         {
             Exception exception;
-            if (readFaults.TryGetValue(grainReference, out exception))
+            if (readFaults.TryGetValue(grainId, out exception))
             {
-                readFaults.Remove(grainReference);
+                readFaults.Remove(grainId);
                 throw exception;
             }
             return Task.CompletedTask;
@@ -91,14 +91,14 @@ namespace Orleans.TestingHost
         /// <summary>
         /// Throws a storage exception if one has been added for the grain reference for writing.
         /// </summary>
-        /// <param name="grainReference"></param>
+        /// <param name="grainId"></param>
         /// <returns></returns>
-        public Task OnWrite(GrainReference grainReference)
+        public Task OnWrite(GrainId grainId)
         {
             Exception exception;
-            if (writeFaults.TryGetValue(grainReference, out exception))
+            if (writeFaults.TryGetValue(grainId, out exception))
             {
-                writeFaults.Remove(grainReference);
+                writeFaults.Remove(grainId);
                 throw exception;
             }
             return Task.CompletedTask;
@@ -107,14 +107,14 @@ namespace Orleans.TestingHost
         /// <summary>
         /// Throws a storage exception if one has been added for the grain reference for clearing state.
         /// </summary>
-        /// <param name="grainReference"></param>
+        /// <param name="grainId"></param>
         /// <returns></returns>
-        public Task OnClear(GrainReference grainReference)
+        public Task OnClear(GrainId grainId)
         {
             Exception exception;
-            if (clearfaults.TryGetValue(grainReference, out exception))
+            if (clearfaults.TryGetValue(grainId, out exception))
             {
-                clearfaults.Remove(grainReference);
+                clearfaults.Remove(grainId);
                 throw exception;
             }
             return Task.CompletedTask;

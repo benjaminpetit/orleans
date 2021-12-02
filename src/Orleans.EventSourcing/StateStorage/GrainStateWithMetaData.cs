@@ -12,6 +12,9 @@ namespace Orleans.EventSourcing.StateStorage
     [GenerateSerializer]
     public class GrainStateWithMetaDataAndETag<TView> : IGrainState<GrainStateWithMetaData<TView>> where TView : class, new()
     {
+        [Id(4)]
+        public string Name { get; set; }
+
         /// <summary>
         /// Gets and Sets StateAndMetaData
         /// </summary>

@@ -1,4 +1,4 @@
-﻿
+
 using Orleans.Storage;
 
 namespace Orleans.EventSourcing
@@ -17,7 +17,6 @@ namespace Orleans.EventSourcing
         ILogViewAdaptor<TLogView, TLogEntry> MakeLogViewAdaptor<TLogView, TLogEntry>(
             ILogViewAdaptorHost<TLogView, TLogEntry> hostgrain,
             TLogView initialstate,
-            string graintypename,
             IGrainStorage grainStorage,
             ILogConsistencyProtocolServices services)
 
