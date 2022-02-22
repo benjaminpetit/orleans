@@ -34,7 +34,7 @@ variables:
 stages:
 - stage: Build
   jobs:
-  - job: Build
+  - job:
     steps:
     - checkout: self
     - task: DotNetCoreCLI@2
