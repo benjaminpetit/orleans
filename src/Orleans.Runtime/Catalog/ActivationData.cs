@@ -617,9 +617,9 @@ namespace Orleans.Runtime
 
         bool IEquatable<IGrainContext>.Equals(IGrainContext other) => ReferenceEquals(this, other);
 
-        public (TExtension, TExtensionInterface) GetOrSetExtension<TExtension, TExtensionInterface>(Func<TExtension> newExtensionFunc)
-            where TExtension : TExtensionInterface
+        public (TExtensionInterface, TExtension) GetOrSetExtension<TExtensionInterface, TExtension>(Func<TExtension> newExtensionFunc)
             where TExtensionInterface : IGrainExtension
+            where TExtension : TExtensionInterface
         {
             TExtension implementation;
             if (GetComponent<TExtensionInterface>() is object existing)
@@ -640,7 +640,7 @@ namespace Orleans.Runtime
             }
 
             var reference = GrainReference.Cast<TExtensionInterface>();
-            return (implementation, reference);
+            return (reference, implementation);
         }
 
         public TExtensionInterface GetExtension<TExtensionInterface>()

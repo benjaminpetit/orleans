@@ -21,11 +21,11 @@ namespace Orleans.Runtime.Providers
 
         public IServiceProvider ServiceProvider { get; }
 
-        public (TExtension, TExtensionInterface) BindExtension<TExtension, TExtensionInterface>(Func<TExtension> newExtensionFunc)
-            where TExtension : TExtensionInterface
+        public (TExtensionInterface, TExtension) BindExtension<TExtensionInterface, TExtension>(Func<TExtension> newExtensionFunc)
             where TExtensionInterface : IGrainExtension
+            where TExtension : TExtensionInterface
         {
-            return _grainContextAccessor.GrainContext.GetComponent<IGrainExtensionBinder>().GetOrSetExtension<TExtension, TExtensionInterface>(newExtensionFunc);
+            return _grainContextAccessor.GrainContext.GetComponent<IGrainExtensionBinder>().GetOrSetExtension<TExtensionInterface, TExtension>(newExtensionFunc);
         }
     }
 }

@@ -233,7 +233,7 @@ namespace Orleans.Streams
                     if (myExtension == null)
                     {
                         if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("BindExtensionLazy - Binding local extension to stream runtime={0}", providerRuntime);
-                        (myExtension, myGrainReference) = providerRuntime.BindExtension<StreamConsumerExtension, IStreamConsumerExtension>(() => new StreamConsumerExtension(providerRuntime));
+                        (myGrainReference, myExtension) = providerRuntime.BindExtension<IStreamConsumerExtension, StreamConsumerExtension>(() => new StreamConsumerExtension(providerRuntime));
                         if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("BindExtensionLazy - Connected Extension={0} GrainRef={1}", myExtension, myGrainReference);                        
                     }
                 }

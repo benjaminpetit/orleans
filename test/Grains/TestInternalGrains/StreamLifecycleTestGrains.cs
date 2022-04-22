@@ -243,7 +243,7 @@ namespace UnitTests.Grains
 
             //var subsHandle = await State.Stream.SubscribeAsync(observer);
 
-            var (myExtension, myExtensionReference) = this.streamProviderRuntime.BindExtension<StreamConsumerExtension, IStreamConsumerExtension>(
+            var (myExtensionReference, myExtension) = this.streamProviderRuntime.BindExtension<IStreamConsumerExtension, StreamConsumerExtension>(
                 () => new StreamConsumerExtension(streamProviderRuntime));
             string extKey = providerName + "_" + Encoding.UTF8.GetString(State.Stream.StreamId.Namespace.ToArray());
             var id = new InternalStreamId(providerName, streamId);

@@ -131,16 +131,16 @@ namespace Orleans.Runtime.Providers
             return this.hostedClientStreamDirectory;
         }
 
-        public (TExtension, TExtensionInterface) BindExtension<TExtension, TExtensionInterface>(Func<TExtension> newExtensionFunc)
-            where TExtension : TExtensionInterface
+        public (TExtensionInterface, TExtension) BindExtension<TExtensionInterface, TExtension>(Func<TExtension> newExtensionFunc)
             where TExtensionInterface : IGrainExtension
+            where TExtension : TExtensionInterface
         {
             if (this.grainContextAccessor.GrainContext is ActivationData activationData && activationData.IsStatelessWorker)
             {
                 throw new InvalidOperationException($"The extension { typeof(TExtension) } cannot be bound to a Stateless Worker.");
             }
 
-            return this.grainContextAccessor.GrainContext.GetComponent<IGrainExtensionBinder>().GetOrSetExtension<TExtension, TExtensionInterface>(newExtensionFunc);
+            return this.grainContextAccessor.GrainContext.GetComponent<IGrainExtensionBinder>().GetOrSetExtension<TExtensionInterface, TExtension>(newExtensionFunc);
         }
     }
 }

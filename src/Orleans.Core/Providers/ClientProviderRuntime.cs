@@ -35,11 +35,11 @@ namespace Orleans.Providers
         public IServiceProvider ServiceProvider { get; }
 
         /// <inheritdoc/>
-        public (TExtension Extension, TExtensionInterface ExtensionReference) BindExtension<TExtension, TExtensionInterface>(Func<TExtension> newExtensionFunc)
-            where TExtension : TExtensionInterface
+        public (TExtensionInterface, TExtension) BindExtension<TExtensionInterface, TExtension>(Func<TExtension> newExtensionFunc)
             where TExtensionInterface : IGrainExtension
+            where TExtension : TExtensionInterface
         {
-            return this.clientContext.GetOrSetExtension<TExtension, TExtensionInterface>(newExtensionFunc);
+            return this.clientContext.GetOrSetExtension<TExtensionInterface, TExtension>(newExtensionFunc);
         }
     }
 }

@@ -66,11 +66,11 @@ namespace Orleans.Providers
             return this.runtimeClient.CurrentActivationIdentity;
         }
 
-        public (TExtension, TExtensionInterface) BindExtension<TExtension, TExtensionInterface>(Func<TExtension> newExtensionFunc)
-            where TExtension : TExtensionInterface
+        public (TExtensionInterface, TExtension) BindExtension<TExtensionInterface, TExtension>(Func<TExtension> newExtensionFunc)
             where TExtensionInterface : IGrainExtension
+            where TExtension : TExtensionInterface
         {
-            return this.clientContext.GetOrSetExtension<TExtension, TExtensionInterface>(newExtensionFunc);
+            return this.clientContext.GetOrSetExtension<TExtensionInterface, TExtension>(newExtensionFunc);
         }
 
         public IStreamPubSub PubSub(StreamPubSubType pubSubType)

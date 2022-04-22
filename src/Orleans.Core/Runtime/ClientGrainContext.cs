@@ -60,11 +60,11 @@ namespace Orleans
             throw new NotSupportedException($"Cannot set components on shared client instance. Extension contract: {typeof(TComponent)}. Component: {instance} (Type: {instance?.GetType()})");
         }
 
-        public (TExtension, TExtensionInterface) GetOrSetExtension<TExtension, TExtensionInterface>(Func<TExtension> newExtensionFunc)
-            where TExtension : TExtensionInterface
+        public (TExtensionInterface, TExtension) GetOrSetExtension<TExtensionInterface, TExtension>(Func<TExtension> newExtensionFunc)
             where TExtensionInterface : IGrainExtension
+            where TExtension : TExtensionInterface
         {
-            (TExtension, TExtensionInterface) result;
+            (TExtensionInterface, TExtension) result;
             if (this.TryGetExtension(out result))
             {
                 return result;
@@ -80,20 +80,20 @@ namespace Orleans
                 var implementation = newExtensionFunc();
                 var reference = _runtimeClient.InternalGrainFactory.CreateObjectReference<TExtensionInterface>(implementation);
                 _extensions[typeof(TExtensionInterface)] = (implementation, reference);
-                result = (implementation, reference);
+                result = (reference, implementation);
                 return result;
             }
         }
 
-        private bool TryGetExtension<TExtension, TExtensionInterface>(out (TExtension, TExtensionInterface) result)
-            where TExtension : TExtensionInterface
+        private bool TryGetExtension<TExtensionInterface, TExtension>(out (TExtensionInterface, TExtension) result)
             where TExtensionInterface : IGrainExtension
+            where TExtension : TExtensionInterface
         {
             if (_extensions.TryGetValue(typeof(TExtensionInterface), out var existing))
             {
                 if (existing.Implementation is TExtension typedResult)
                 {
-                    result = (typedResult, existing.Reference.AsReference<TExtensionInterface>());
+                    result = (existing.Reference.AsReference<TExtensionInterface>(), typedResult);
                     return true;
                 }
 

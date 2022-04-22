@@ -71,7 +71,7 @@ namespace UnitTests.Grains
             InitStream(streamId, providerName);
             var observer = new MyStreamObserver<int>(logger);
 
-            var (myExtension, myExtensionReference) = this.streamProviderRuntime.BindExtension<StreamConsumerExtension, IStreamConsumerExtension>(
+            var (myExtensionReference, myExtension) = this.streamProviderRuntime.BindExtension<IStreamConsumerExtension, StreamConsumerExtension>(
                 () => new StreamConsumerExtension(streamProviderRuntime));
 
             var id = new InternalStreamId(providerName, streamId);
