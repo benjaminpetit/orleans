@@ -231,14 +231,18 @@ namespace Orleans.Runtime
     {
         /// <summary>
         /// Returns the grain extension registered for the provided <typeparamref name="TExtensionInterface"/>.
+        /// If none was explicitely set, it will try find a matching implementation that is registered for automated install.
         /// </summary>
         /// <typeparam name="TExtensionInterface">
         /// The grain extension interface.
         /// </typeparam>
-        /// <returns>
+        /// <param name="extension">
         /// The implementation of the extension which is bound to this grain.
+        /// </param>
+        /// <returns>
+        /// True if a matching extension has been found or created, False otherwise
         /// </returns>
-        TExtensionInterface GetExtension<TExtensionInterface>() where TExtensionInterface : IGrainExtension;
+        bool TryGetExtension<TExtensionInterface>(out TExtensionInterface extension) where TExtensionInterface : IGrainExtension;
 
         /// <summary>
         /// Binds an extension to an addressable object, if not already done.
@@ -250,5 +254,27 @@ namespace Orleans.Runtime
         (TExtensionInterface, TExtension) GetOrSetExtension<TExtensionInterface, TExtension>(Func<TExtension> newExtensionFunc)
             where TExtensionInterface : IGrainExtension
             where TExtension : TExtensionInterface;
+    }
+
+    public static class GrainExtensionBinderExtension
+    {
+        /// <summary>
+        /// Returns the grain extension registered for the provided <typeparamref name="TExtensionInterface"/>.
+        /// </summary>
+        /// <typeparam name="TExtensionInterface">
+        /// The grain extension interface.
+        /// </typeparam>
+        /// <returns>
+        /// The implementation of the extension which is bound to this grain.
+        /// </returns>
+        public static TExtensionInterface GetExtension<TExtensionInterface>(this IGrainExtensionBinder grainExtensionBinder)
+            where TExtensionInterface : IGrainExtension
+        {
+            if (grainExtensionBinder.TryGetExtension<TExtensionInterface>(out var extension))
+            {
+                return extension;
+            }
+            throw new GrainExtensionNotInstalledException($"No extension of type {typeof(TExtensionInterface)} is installed on this instance and no implementations are registered for automated install");
+        }
     }
 }
