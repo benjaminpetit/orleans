@@ -13,16 +13,19 @@ namespace Orleans.BroadcastChannel.SubscriberTable
     internal class ImplicitChannelSubscriberTable
     {
         private readonly object _lockObj = new object();
+        private readonly IGrainFactory _grainFactory;
         private readonly GrainBindingsResolver _bindings;
         private readonly IChannelNamespacePredicateProvider[] _providers;
         private readonly IServiceProvider _serviceProvider;
         private Cache _cache;
 
         public ImplicitChannelSubscriberTable(
+            IGrainFactory grainFactory,
             GrainBindingsResolver bindings,
             IEnumerable<IChannelNamespacePredicateProvider> providers,
             IServiceProvider serviceProvider)
         {
+            _grainFactory = grainFactory;
             _bindings = bindings;
             var initialBindings = bindings.GetAllBindings();
             _providers = providers.ToArray();
@@ -103,11 +106,10 @@ namespace Orleans.BroadcastChannel.SubscriberTable
         /// Retrieve a map of implicit subscriptionsIds to implicit subscribers, given a channel ID. This method throws an exception if there's no namespace associated with the channel ID.
         /// </summary>
         /// <param name="channelId">A channel ID.</param>
-        /// <param name="grainFactory">The grain factory used to get consumer references.</param>
         /// <returns>A set of references to implicitly subscribed grains. They are expected to support the broadcast channel consumer extension.</returns>
         /// <exception cref="ArgumentException">The channel ID doesn't have an associated namespace.</exception>
         /// <exception cref="InvalidOperationException">Internal invariant violation.</exception>
-        internal Dictionary<Guid, IBroadcastChannelConsumerExtension> GetImplicitSubscribers(InternalChannelId channelId, IGrainFactory grainFactory)
+        internal Dictionary<Guid, IBroadcastChannelConsumerExtension> GetSubscribers(InternalChannelId channelId)
         {
             var channelNamespace = channelId.GetNamespace();
             if (string.IsNullOrWhiteSpace(channelNamespace))
@@ -120,7 +122,7 @@ namespace Orleans.BroadcastChannel.SubscriberTable
             var result = new Dictionary<Guid, IBroadcastChannelConsumerExtension>();
             foreach (var entry in entries)
             {
-                var consumer = MakeConsumerReference(grainFactory, channelId, entry);
+                var consumer = MakeConsumerReference(channelId, entry);
                 var subscriptionGuid = MakeSubscriptionGuid(entry.GrainType, channelId);
                 CollectionsMarshal.GetValueRefOrAddDefault(result, subscriptionGuid, out var duplicate) = consumer;
                 if (duplicate)
@@ -177,17 +179,15 @@ namespace Orleans.BroadcastChannel.SubscriberTable
         /// <summary>
         /// Create a reference to a grain that we expect to support the broadcast channel consumer extension.
         /// </summary>
-        /// <param name="grainFactory">The grain factory used to get consumer references.</param>
         /// <param name="channelId">The channel ID to use for the grain ID construction.</param>
         /// <param name="channelSubscriber">The GrainBindings for the grain to create</param>
         /// <returns></returns>
         private IBroadcastChannelConsumerExtension MakeConsumerReference(
-            IGrainFactory grainFactory,
             InternalChannelId channelId,
             BroadcastChannelSubscriber channelSubscriber)
         {
             var grainId = channelSubscriber.GetGrainId(channelId);
-            return grainFactory.GetGrain<IBroadcastChannelConsumerExtension>(grainId);
+            return _grainFactory.GetGrain<IBroadcastChannelConsumerExtension>(grainId);
         }
 
         private class BroadcastChannelSubscriberPredicate

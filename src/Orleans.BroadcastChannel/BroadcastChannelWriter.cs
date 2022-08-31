@@ -40,7 +40,7 @@ namespace Orleans.BroadcastChannel
 
         public async Task Publish(T item)
         {
-            var subscribers = _subscriberTable.GetImplicitSubscribers(_channelId, _grainFactory);
+            var subscribers = _subscriberTable.GetSubscribers(_channelId);
 
             if (subscribers.Count == 0)
             {
