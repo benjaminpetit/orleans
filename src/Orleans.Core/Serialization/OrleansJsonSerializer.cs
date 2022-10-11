@@ -6,10 +6,12 @@ using Newtonsoft.Json.Linq;
 using Orleans.Runtime;
 using Orleans.GrainReferences;
 using Orleans.Serialization.TypeSystem;
+using Microsoft.Extensions.Options;
 using System.Globalization;
 
 namespace Orleans.Serialization
 {
+
     /// <summary>
     /// Utility class for configuring <see cref="JsonSerializerSettings"/> to support Orleans types.
     /// </summary>
@@ -18,18 +20,14 @@ namespace Orleans.Serialization
         public const string UseFullAssemblyNamesProperty = "UseFullAssemblyNames";
         public const string IndentJsonProperty = "IndentJSON";
         public const string TypeNameHandlingProperty = "TypeNameHandling";
-        private readonly Lazy<JsonSerializerSettings> settings;
+        private readonly JsonSerializerSettings settings;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="OrleansJsonSerializer"/> class.
         /// </summary>
-        /// <param name="services">The service provider.</param>
-        public OrleansJsonSerializer(IServiceProvider services)
+        public OrleansJsonSerializer(IOptions<OrleansJsonSerializerOptions> options)
         {
-            this.settings = new Lazy<JsonSerializerSettings>(() =>
-            {
-                return GetDefaultSerializerSettings(services);
-            });
+            this.settings = options.Value.JsonSerializerSettings;
         }
 
         /// <summary>
@@ -41,32 +39,7 @@ namespace Orleans.Serialization
         /// <returns>The default serializer settings.</returns>
         public static JsonSerializerSettings GetDefaultSerializerSettings(IServiceProvider services)
         {
-            var typeResolver = services.GetRequiredService<TypeResolver>();
-            var serializationBinder = new OrleansJsonSerializationBinder(typeResolver);
-            var settings = new JsonSerializerSettings
-            {
-                TypeNameHandling = TypeNameHandling.All,
-                PreserveReferencesHandling = PreserveReferencesHandling.Objects,
-                DateFormatHandling = DateFormatHandling.IsoDateFormat,
-                DefaultValueHandling = DefaultValueHandling.Ignore,
-                MissingMemberHandling = MissingMemberHandling.Ignore,
-                NullValueHandling = NullValueHandling.Ignore,
-                ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor,
-                TypeNameAssemblyFormatHandling = TypeNameAssemblyFormatHandling.Simple,
-                Formatting = Formatting.None,
-                SerializationBinder = serializationBinder
-            };
-
-            settings.Converters.Add(new IPAddressConverter());
-            settings.Converters.Add(new IPEndPointConverter());
-            settings.Converters.Add(new GrainIdConverter());
-            settings.Converters.Add(new ActivationIdConverter());
-            settings.Converters.Add(new SiloAddressJsonConverter());
-            settings.Converters.Add(new MembershipVersionJsonConverter());
-            settings.Converters.Add(new UniqueKeyConverter());
-            settings.Converters.Add(new GrainReferenceJsonConverter(services.GetRequiredService<GrainReferenceActivator>()));
-
-            return settings;
+            return OrleansJsonSerializerSettings.GetDefaultSerializerSettings(services);
         }
 
         /// <summary>
@@ -110,7 +83,7 @@ namespace Orleans.Serialization
                 return null;
             }
 
-            return JsonConvert.DeserializeObject(input, expectedType, this.settings.Value);
+            return JsonConvert.DeserializeObject(input, expectedType, this.settings);
         }
 
         /// <summary>
@@ -118,7 +91,7 @@ namespace Orleans.Serialization
         /// </summary>
         /// <param name="item">The object to serialize.</param>
         /// <param name="expectedType">The type the deserializer should expect.</param>
-        public string Serialize(object item, Type expectedType) => JsonConvert.SerializeObject(item, expectedType, this.settings.Value);
+        public string Serialize(object item, Type expectedType) => JsonConvert.SerializeObject(item, expectedType, this.settings);
     }
 
     /// <summary>
