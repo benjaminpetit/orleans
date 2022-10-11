@@ -269,7 +269,11 @@ namespace Tester.AzureUtils.Persistence
         private async Task<AzureTableGrainStorage> InitAzureTableGrainStorage(bool useJson = false, TypeNameHandling? typeNameHandling = null)
         {
             var options = new AzureTableStorageOptions();
-            var jsonOptions = new JsonGrainStorageSerializerOptions { TypeNameHandling = typeNameHandling };
+            var jsonOptions = new JsonGrainStorageSerializerOptions();
+            if (typeNameHandling != null)
+            {
+                jsonOptions.JsonSerializerSettings.TypeNameHandling = typeNameHandling.Value;
+            }
 
             options.ConfigureTestDefaults();
 
