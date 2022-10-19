@@ -224,6 +224,11 @@ namespace Orleans.Serialization.Serializers
                 untypedResult = (IFieldCodec)GetServiceOrCreateInstance(typeof(AbstractTypeSerializer<>).MakeGenericType(fieldType));
             }
 
+            if (untypedResult is null && fieldType.IsAssignableTo(typeof(Exception)))
+            {
+                // Handle non exception without a serializer
+                return (IFieldCodec<TField>) TryGetCodec<Exception>();
+            }
 
             // Attempt to adapt the codec if it's not already adapted.
             IFieldCodec<TField> typedResult;
