@@ -404,7 +404,7 @@ public static class CosmosStorageFactory
     public static IGrainStorage Create(IServiceProvider services, string name)
     {
         var optionsMonitor = services.GetRequiredService<IOptionsMonitor<CosmosGrainStorageOptions>>();
-        var partitionKeyProvider = services.GetServiceByName<IPartitionKeyProvider>(name)
+        var partitionKeyProvider = services.GetKeyedService<IPartitionKeyProvider>(name)
             ?? services.GetRequiredService<IPartitionKeyProvider>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var clusterOptions = services.GetRequiredService<IOptions<ClusterOptions>>();

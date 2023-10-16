@@ -36,7 +36,7 @@ public static class HostingExtensions
         string name,
         Action<CosmosGrainStorageOptions> configureOptions) where TPartitionKeyProvider : class, IPartitionKeyProvider
     {
-        builder.Services.AddSingletonNamedService<IPartitionKeyProvider, TPartitionKeyProvider>(name);
+        builder.Services.AddKeyedSingleton<IPartitionKeyProvider, TPartitionKeyProvider>(name);
         builder.Services.AddCosmosGrainStorage(name, configureOptions);
         return builder;
     }
@@ -129,7 +129,7 @@ public static class HostingExtensions
         string name,
         Action<OptionsBuilder<CosmosGrainStorageOptions>>? configureOptions = null) where TPartitionKeyProvider : class, IPartitionKeyProvider
     {
-        builder.Services.AddSingletonNamedService<IPartitionKeyProvider, TPartitionKeyProvider>(name);
+        builder.Services.AddKeyedSingleton<IPartitionKeyProvider, TPartitionKeyProvider>(name);
         builder.Services.AddCosmosGrainStorage(name, configureOptions);
         return builder;
     }
@@ -162,7 +162,7 @@ public static class HostingExtensions
     {
         if (customPartitionKeyProviderType != null)
         {
-            builder.Services.AddSingletonNamedService<IPartitionKeyProvider>(name, customPartitionKeyProviderType);
+            builder.Services.AddKeyedSingleton(typeof(IPartitionKeyProvider), name, customPartitionKeyProviderType);
         }
 
         builder.Services.AddCosmosGrainStorage(name, configureOptions);
@@ -251,9 +251,9 @@ public static class HostingExtensions
                 sp.GetService<IOptionsMonitor<CosmosGrainStorageOptions>>()!.Get(name),
                 name));
         services.ConfigureNamedOptionForLogging<CosmosGrainStorageOptions>(name);
-        services.TryAddSingleton(sp => sp.GetServiceByName<IGrainStorage>(ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME));
+        services.TryAddSingleton(sp => sp.GetRequiredKeyedService<IGrainStorage>(ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME));
         services.TryAddSingleton<IPartitionKeyProvider, DefaultPartitionKeyProvider>();
-        return services.AddSingletonNamedService(name, CosmosStorageFactory.Create)
-            .AddSingletonNamedService(name, (s, n) => (ILifecycleParticipant<ISiloLifecycle>)s.GetRequiredServiceByName<IGrainStorage>(n));
+        return services.AddKeyedSingleton(name, CosmosStorageFactory.Create)
+            .AddKeyedSingleton(name, (s, n) => (ILifecycleParticipant<ISiloLifecycle>)s.GetRequiredKeyedService<IGrainStorage>(n));
     }
 }
