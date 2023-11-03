@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Orleans.Storage;
 using Orleans.Providers;
 using Orleans.Persistence.Cosmos;
+using Orleans.Runtime.Hosting;
 
 namespace Orleans.Hosting;
 
@@ -253,7 +254,6 @@ public static class HostingExtensions
         services.ConfigureNamedOptionForLogging<CosmosGrainStorageOptions>(name);
         services.TryAddSingleton(sp => sp.GetRequiredKeyedService<IGrainStorage>(ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME));
         services.TryAddSingleton<IPartitionKeyProvider, DefaultPartitionKeyProvider>();
-        return services.AddKeyedSingleton(name, CosmosStorageFactory.Create)
-            .AddKeyedSingleton(name, (s, n) => (ILifecycleParticipant<ISiloLifecycle>)s.GetRequiredKeyedService<IGrainStorage>(n));
+        return services.AddGrainStorage(name, CosmosStorageFactory.Create);
     }
 }
