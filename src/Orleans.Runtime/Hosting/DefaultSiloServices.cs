@@ -343,6 +343,7 @@ namespace Orleans.Hosting
             services.TryAddSingleton<IPersistentStateFactory, PersistentStateFactory>();
             services.TryAddSingleton(typeof(IAttributeToFactoryMapper<PersistentStateAttribute>), typeof(PersistentStateAttributeMapper));
 
+
             // IAsyncEnumerable support
             services.AddScoped<IAsyncEnumerableGrainExtension, AsyncEnumerableGrainExtension>();
             services.AddKeyedTransient<IGrainExtension>(
@@ -393,6 +394,9 @@ namespace Orleans.Hosting
             services.AddSingleton<MigrationContext.SerializationHooks>();
             services.AddSingleton<ActivationMigrationManager>();
             services.AddFromExisting<IActivationMigrationManager, ActivationMigrationManager>();
+
+            // Provider validator
+            services.AddSingleton<ILifecycleParticipant<ISiloLifecycle>, ProvidersValidator>();
         }
 
         private class AllowOrleansTypes : ITypeNameFilter

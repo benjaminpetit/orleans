@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using Orleans.Metadata;
+using Orleans.Runtime;
 
 namespace Orleans.Providers
 {
@@ -11,7 +15,7 @@ namespace Orleans.Providers
     /// </para>
     /// </summary>
     [AttributeUsage(AttributeTargets.Class)]
-    public sealed class StorageProviderAttribute : Attribute
+    public sealed class StorageProviderAttribute : Attribute, IGrainPropertiesProviderAttribute
     {
         /// <summary>
         /// Gets or sets the name of the provider to be used for persisting of grain state.
@@ -24,6 +28,15 @@ namespace Orleans.Providers
         public StorageProviderAttribute()
         {
             ProviderName = ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME;
+        }
+
+        public void Populate(IServiceProvider services, Type grainClass, GrainType grainType, Dictionary<string, string> properties)
+        {
+            if (properties.TryGetValue(WellKnownGrainTypeProperties.StorageProvider, out var value))
+            {
+                properties[WellKnownGrainTypeProperties.StorageProvider] = string.Concat(value, ",", ProviderName);
+            }
+            properties[WellKnownGrainTypeProperties.StorageProvider] = ProviderName;
         }
     }
 

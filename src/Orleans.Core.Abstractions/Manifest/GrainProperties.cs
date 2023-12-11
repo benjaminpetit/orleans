@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using Orleans.Runtime;
 
@@ -162,6 +164,11 @@ namespace Orleans.Metadata
         /// Specifies the name of a method used to determine if a request can interleave other requests.
         /// </summary>
         public const string MayInterleavePredicate = "may-interleave-predicate";
+
+        /// <summary>
+        /// The name of the storage provider to use for Grain Storage.
+        /// </summary>
+        public const string StorageProvider = "storage-provider";
     }
 
     /// <summary>
@@ -233,6 +240,18 @@ namespace Orleans.Metadata
                 if (attr is IGrainPropertiesProviderAttribute providerAttribute)
                 {
                     providerAttribute.Populate(this.serviceProvider, grainClass, grainType, properties);
+                }
+            }
+            // Find the constructor - supports only single public constructor.
+            var parameters = grainClass.GetConstructors().FirstOrDefault()?.GetParameters() ?? Enumerable.Empty<ParameterInfo>();
+            foreach (var parameter in parameters)
+            {
+                foreach (var attr in parameter.GetCustomAttributes(inherit: true))
+                {
+                    if (attr is IGrainPropertiesProviderAttribute providerAttribute)
+                    {
+                        providerAttribute.Populate(this.serviceProvider, grainClass, grainType, properties);
+                    }
                 }
             }
         }

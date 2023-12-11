@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Security.Cryptography.X509Certificates;
+using Orleans.Metadata;
+using Orleans.Providers;
 
 namespace Orleans.Runtime
 {
@@ -9,7 +13,7 @@ namespace Orleans.Runtime
     /// <seealso cref="Orleans.IFacetMetadata" />
     /// <seealso cref="Orleans.Runtime.IPersistentStateConfiguration" />
     [AttributeUsage(AttributeTargets.Parameter)]
-    public class PersistentStateAttribute : Attribute, IFacetMetadata, IPersistentStateConfiguration
+    public class PersistentStateAttribute : Attribute, IFacetMetadata, IPersistentStateConfiguration, IGrainPropertiesProviderAttribute
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="PersistentStateAttribute"/> class.
@@ -20,7 +24,7 @@ namespace Orleans.Runtime
         {
             ArgumentNullException.ThrowIfNull(stateName);
             this.StateName = stateName;
-            this.StorageName = storageName;
+            this.StorageName = storageName ?? ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME;
         }
 
         /// <summary>
@@ -34,5 +38,14 @@ namespace Orleans.Runtime
         /// </summary>
         /// <value>The name of the storage provider.</value>
         public string StorageName { get; }
+
+        public void Populate(IServiceProvider services, Type grainClass, GrainType grainType, Dictionary<string, string> properties)
+        {
+            if (properties.TryGetValue(WellKnownGrainTypeProperties.StorageProvider, out var value))
+            {
+                properties[WellKnownGrainTypeProperties.StorageProvider] = string.Concat(value, ",", StorageName);
+            }
+            properties[WellKnownGrainTypeProperties.StorageProvider] = StorageName;
+        }
     }
 }
