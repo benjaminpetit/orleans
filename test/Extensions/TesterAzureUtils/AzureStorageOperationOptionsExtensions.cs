@@ -34,14 +34,16 @@ namespace Tester.AzureUtils
         public static TableServiceClient GetTableServiceClient()
         {
             var env = Environment.GetEnvironmentVariables();
+            Console.Error.WriteLine("=== ENV VARS ===");
             foreach (var key in env.Keys)
             {
-                Console.WriteLine($"'{key}'='{env[key]}'");
+                Console.Error.WriteLine($"'{key}'='{env[key]}'");
             }
+            Console.Error.WriteLine("=== END ENV VARS ===");
 
-            Console.WriteLine($"TenantId: {Options.TenantId}");
-            Console.WriteLine($"ManagedIdentityClientId: {Options.ManagedIdentityClientId}");
-            Console.WriteLine($"WorkloadIdentityClientId: {Options.WorkloadIdentityClientId}");
+            Console.Error.WriteLine($"TenantId: {Options.TenantId}");
+            Console.Error.WriteLine($"ManagedIdentityClientId: {Options.ManagedIdentityClientId}");
+            Console.Error.WriteLine($"WorkloadIdentityClientId: {Options.WorkloadIdentityClientId}");
 
             _ = _listener.ToString();
 
