@@ -34,7 +34,7 @@ namespace Tester.AzureUtils.Streaming
             var options = new AzureStorageOperationOptions { TableName = TableName };
             if (TestDefaultConfiguration.UseAadAuthentication)
             {
-                options.TableServiceClient = new(TestDefaultConfiguration.TableEndpoint, new AzureCliCredential());
+                options.TableServiceClient = new(TestDefaultConfiguration.TableEndpoint, new DefaultAzureCredential());
             }
             else
             {
