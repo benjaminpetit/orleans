@@ -10,6 +10,7 @@ namespace Tester.AzureUtils
     {
         public static DefaultAzureCredentialOptions Options = new DefaultAzureCredentialOptions
         {
+            AdditionallyAllowedTenants = { "*" },
             Diagnostics =
             {
                 LoggedHeaderNames = { "x-ms-request-id" },
@@ -29,6 +30,12 @@ namespace Tester.AzureUtils
 
         public static TableServiceClient GetTableServiceClient()
         {
+            var env = Environment.GetEnvironmentVariables();
+            foreach (var key in env.Keys)
+            {
+                Console.WriteLine($"'{key}'='{env[key]}'");
+            }
+
             return TestDefaultConfiguration.UseAadAuthentication
                 ? new(TestDefaultConfiguration.TableEndpoint, Credential)
                 : new(TestDefaultConfiguration.DataConnectionString);
