@@ -11,7 +11,7 @@ namespace ServiceBus.Tests
         {
             if (TestDefaultConfiguration.UseAadAuthentication)
             {
-                options.ConfigureEventHubConnection(TestDefaultConfiguration.EventHubFullyQualifiedNamespace, eventHubName, consumerGroup, new DefaultAzureCredential());
+                options.ConfigureEventHubConnection(TestDefaultConfiguration.EventHubFullyQualifiedNamespace, eventHubName, consumerGroup, new AzureCliCredential());
             }
             else
             {
