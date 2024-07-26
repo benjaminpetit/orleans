@@ -78,6 +78,7 @@ namespace Tester.AzureUtils
         {
             if (TestDefaultConfiguration.UseAadAuthentication)
             {
+                Console.WriteLine(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
                 options.QueueServiceClient = new(TestDefaultConfiguration.DataQueueUri, Credential);
             }
             else
