@@ -1,8 +1,5 @@
-using System.Diagnostics.Tracing;
-using Azure.Core;
 using Azure.Data.Tables;
 using Azure.Identity;
-using Microsoft.Extensions.Options;
 using TestExtensions;
 
 namespace Tester.AzureUtils
@@ -17,7 +14,6 @@ namespace Tester.AzureUtils
                 LoggedHeaderNames = { "x-ms-request-id" },
                 LoggedQueryParameters = { "api-version" },
                 IsAccountIdentifierLoggingEnabled = true,
-                IsLoggingEnabled = true,
             }
         };
 
