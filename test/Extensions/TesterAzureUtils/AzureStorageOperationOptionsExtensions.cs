@@ -7,23 +7,7 @@ namespace Tester.AzureUtils
 {
     public static class AzureStorageOperationOptionsExtensions
     {
-        static AzureStorageOperationOptionsExtensions()
-        {
-            AzureEventSourceListener.CreateConsoleLogger();
-        }
-        public static DefaultAzureCredentialOptions Options = new DefaultAzureCredentialOptions
-        {
-            AdditionallyAllowedTenants = { "*" },
-            Diagnostics =
-            {
-                LoggedHeaderNames = { "x-ms-request-id" },
-                LoggedQueryParameters = { "api-version" },
-                IsAccountIdentifierLoggingEnabled = true,
-            }
-        };
-
-        //public static DefaultAzureCredential Credential = new DefaultAzureCredential(Options);
-        public static WorkloadIdentityCredential Credential = new WorkloadIdentityCredential();
+        public static DefaultAzureCredential Credential = new DefaultAzureCredential();
 
         public static Orleans.Clustering.AzureStorage.AzureStorageOperationOptions ConfigureTestDefaults(this Orleans.Clustering.AzureStorage.AzureStorageOperationOptions options)
         {
@@ -78,9 +62,6 @@ namespace Tester.AzureUtils
         {
             if (TestDefaultConfiguration.UseAadAuthentication)
             {
-                Console.WriteLine("BPETIT DEBUG: '" + System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"))) + "'");
-                Console.WriteLine("BPETIT DEBUG: '" + Environment.GetEnvironmentVariable("AZURE_TENANT_ID") + "'");
-                Console.WriteLine("BPETIT DEBUG: '" + Environment.GetEnvironmentVariable("AZURE_FEDERATED_TOKEN_FILE") + "'");
                 options.QueueServiceClient = new(TestDefaultConfiguration.DataQueueUri, Credential);
             }
             else
