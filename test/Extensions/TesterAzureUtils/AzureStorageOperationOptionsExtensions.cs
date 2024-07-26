@@ -78,7 +78,9 @@ namespace Tester.AzureUtils
         {
             if (TestDefaultConfiguration.UseAadAuthentication)
             {
-                Console.WriteLine(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
+                Console.WriteLine("BPETIT DEBUG: '" + Environment.GetEnvironmentVariable("AZURE_CLIENT_ID") + "'");
+                Console.WriteLine("BPETIT DEBUG: '" + Environment.GetEnvironmentVariable("AZURE_TENANT_ID") + "'");
+                Console.WriteLine("BPETIT DEBUG: '" + Environment.GetEnvironmentVariable("AZURE_FEDERATED_TOKEN_FILE") + "'");
                 options.QueueServiceClient = new(TestDefaultConfiguration.DataQueueUri, Credential);
             }
             else
