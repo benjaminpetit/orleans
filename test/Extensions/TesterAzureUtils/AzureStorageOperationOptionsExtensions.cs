@@ -1,3 +1,4 @@
+using Azure.Core.Diagnostics;
 using Azure.Data.Tables;
 using Azure.Identity;
 using TestExtensions;
@@ -6,6 +7,10 @@ namespace Tester.AzureUtils
 {
     public static class AzureStorageOperationOptionsExtensions
     {
+        static AzureStorageOperationOptionsExtensions()
+        {
+            AzureEventSourceListener.CreateConsoleLogger();
+        }
         public static DefaultAzureCredentialOptions Options = new DefaultAzureCredentialOptions
         {
             AdditionallyAllowedTenants = { "*" },
