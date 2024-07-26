@@ -9,7 +9,6 @@ namespace Tester.AzureUtils
 {
     public static class AzureStorageOperationOptionsExtensions
     {
-        private static AzureCoreEventListener _listener = new();
         public static DefaultAzureCredentialOptions Options = new DefaultAzureCredentialOptions
         {
             AdditionallyAllowedTenants = { "*" },
@@ -33,41 +32,10 @@ namespace Tester.AzureUtils
 
         public static TableServiceClient GetTableServiceClient()
         {
-            var env = Environment.GetEnvironmentVariables();
-            Console.Error.WriteLine("=== ENV VARS ===");
-            foreach (var key in env.Keys)
-            {
-                Console.Error.WriteLine($"'{key}'='{env[key]}'");
-            }
-            Console.Error.WriteLine("=== END ENV VARS ===");
-
-            Console.Error.WriteLine($"TenantId: {Options.TenantId}");
-            Console.Error.WriteLine($"ManagedIdentityClientId: {Options.ManagedIdentityClientId}");
-            Console.Error.WriteLine($"WorkloadIdentityClientId: {Options.WorkloadIdentityClientId}");
-
-            _ = _listener.ToString();
-
             return TestDefaultConfiguration.UseAadAuthentication
                 ? new(TestDefaultConfiguration.TableEndpoint, Credential)
                 : new(TestDefaultConfiguration.DataConnectionString);
         }
-
-        internal sealed class AzureCoreEventListener : EventListener
-        {
-            protected override void OnEventSourceCreated(EventSource source)
-            {
-                if (source.Name.Equals("Azure-Core"))
-                {
-                    EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string>());
-                }
-            }
-
-            protected override void OnEventWritten(EventWrittenEventArgs eventData)
-            {
-                Console.WriteLine($"[{eventData.EventName}] {eventData.Message} {string.Join(", ", eventData.PayloadNames.Zip(eventData.Payload).Select((k, v) => $"{k}={v}"))}.");
-            }
-        }
-            
 
         public static Orleans.GrainDirectory.AzureStorage.AzureStorageOperationOptions ConfigureTestDefaults(this Orleans.GrainDirectory.AzureStorage.AzureStorageOperationOptions options)
         {
