@@ -278,6 +278,20 @@ public class GeneratedSerializerTests : IDisposable
     }
 
     [Fact]
+    public void GenericArityAliasTest()
+    {
+        {
+            var original = new Outer<int>.InnerGen<string>();
+            RoundTripThroughUntypedSerializer(original, out var formattedBitStream);
+        }
+
+        {
+            var original = new Outer<int>.InnerNonGen();
+            RoundTripThroughUntypedSerializer(original, out var formattedBitStream);
+        }
+    }
+
+    [Fact]
     public void ArraysAreSupported()
     {
         var original = new[] { "a", "bb", "ccc" };
@@ -446,6 +460,52 @@ public class GeneratedSerializerTests : IDisposable
     }
 
     [Fact]
+    public void DuplicateReferencesSerializeTargetJustOnce()
+    {
+        var sharedObject = new MyValue(1);
+        var original = new object[] { sharedObject, sharedObject };
+
+        var result = RoundTripThroughCodec(original);
+
+        Assert.Equal(original, result);
+        Assert.Same(result[0], result[1]);
+    }
+
+    [Fact]
+    public void DuplicateReferencesSerializeTargetMultipleTimesWhenSuppressReferenceTrackingEnabled()
+    {
+        var sharedObject = new MySuppressReferenceTrackingValue(1);
+        var original = new object[] { sharedObject, sharedObject };
+
+        var result = RoundTripThroughCodec(original);
+
+        Assert.Equal(original, result);
+        Assert.NotSame(result[0], result[1]);
+    }
+
+    [Fact]
+    public void DuplicateReferencesToAnyExceptionTypesSerializeTargetMultipleTimes()
+    {
+        var sharedException = new MyCustomException("Something bad");
+        var original = new Exception[] { sharedException, sharedException };
+
+        var result = RoundTripThroughCodec(original);
+
+        Assert.NotSame(result[0], result[1]);
+    }
+
+    [Fact]
+    public void DuplicateReferencesToExceptionTypeWithSurrogateSerializeTargetMultipleTimes()
+    {
+        var sharedException = new MyCustomForeignException(1);
+        var original = new Exception[] { sharedException, sharedException };
+
+        var result = RoundTripThroughCodec(original);
+
+        Assert.NotSame(result[0], result[1]);
+    }
+
+    [Fact]
     public void TypeReferencesAreEncodedOnce()
     {
         var original = new object[] { new MyValue(1), new MyValue(2), new MyValue(3) };
@@ -484,6 +544,18 @@ public class GeneratedSerializerTests : IDisposable
         Assert.Contains("[#3 TagDelimited Id: 2 SchemaType: Encoded RuntimeType: MyValue", formattedBitStream); // UntypedValue
         Assert.Contains("[#5 TagDelimited Id: 3 SchemaType: Expected]", formattedBitStream); // Type2
         Assert.Contains("[#7 VarInt Id: 2 SchemaType: Expected] Value: 2", formattedBitStream); // type reference from Type2 field pointing to the encoded field type of UntypedValue
+    }
+
+    [Fact]
+    public void TypeDerivedFromList()
+    {
+        var original = new SerializableClassWithCompiledBase { IntProperty = 30 };
+        original.Add(1);
+        original.Add(200);
+        var result = RoundTripThroughCodec(original);
+
+        Assert.Equal(original.IntProperty, result.IntProperty);
+        Assert.True(original.SequenceEqual(result));
     }
 
     [Fact]

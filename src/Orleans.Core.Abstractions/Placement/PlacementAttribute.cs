@@ -99,4 +99,28 @@ namespace Orleans.Placement
             base(SiloRoleBasedPlacement.Singleton)
         { }
     }
+
+    /// <summary>
+    /// Marks a grain class as using the <see cref="ResourceOptimizedPlacement"/> policy.
+    /// </summary>
+    /// <inheritdoc cref="ResourceOptimizedPlacement"/>
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+    public sealed class ResourceOptimizedPlacementAttribute : PlacementAttribute
+    {
+        public ResourceOptimizedPlacementAttribute() :
+            base(ResourceOptimizedPlacement.Singleton)
+        { }
+    }
+
+    /// <summary>
+    /// Ensures that when active-rebalancing is enabled, activations of this grain type will not be migrated automatically.
+    /// </summary>
+    /// <remarks>Activations can still be migrated by user initiated code.</remarks>
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+    public sealed class ImmovableAttribute : Attribute, IGrainPropertiesProviderAttribute
+    {
+        /// <inheritdoc/>
+        public void Populate(IServiceProvider services, Type grainClass, GrainType grainType, Dictionary<string, string> properties)
+            => properties[WellKnownGrainTypeProperties.Immovable] = "true";
+    }
 }

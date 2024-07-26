@@ -8,22 +8,22 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.Configuration;
 using Orleans.Internal;
+using Orleans.Runtime.Internal;
 
 namespace Orleans.Runtime
 {
     /// <summary>
     /// Identifies activations that have been idle long enough to be deactivated.
     /// </summary>
-    internal class ActivationCollector : IActivationWorkingSetObserver, IHealthCheckParticipant, ILifecycleParticipant<ISiloLifecycle>
+    internal class ActivationCollector : IActivationWorkingSetObserver, ILifecycleParticipant<ISiloLifecycle>
     {
-        internal Action<GrainId> Debug_OnDecideToCollectActivation;
         private readonly TimeSpan quantum;
         private readonly TimeSpan shortestAgeLimit;
         private readonly ConcurrentDictionary<DateTime, Bucket> buckets = new();
         private DateTime nextTicket;
         private static readonly List<ICollectibleGrainContext> nothing = new(0);
         private readonly ILogger logger;
-        private readonly IAsyncTimer _collectionTimer;
+        private readonly PeriodicTimer _collectionTimer;
         private Task _collectionLoopTask;
         private int collectionNumber;
         private int _activationCount;
@@ -45,7 +45,7 @@ namespace Orleans.Runtime
             shortestAgeLimit = new(options.Value.ClassSpecificCollectionAge.Values.Aggregate(options.Value.CollectionAge.Ticks, (a, v) => Math.Min(a, v.Ticks)));
             nextTicket = MakeTicketFromDateTime(DateTime.UtcNow);
             this.logger = logger;
-            _collectionTimer = timerFactory.Create(quantum, "ActivationCollector");
+            _collectionTimer = new PeriodicTimer(quantum);
         }
 
         // Return the number of activations that were used (touched) in the last recencyPeriod.
@@ -85,7 +85,7 @@ namespace Orleans.Runtime
         /// <param name="timeout">
         /// The current idle collection time for the grain.
         /// </param>
-        public void ScheduleCollection(ICollectibleGrainContext item, TimeSpan timeout)
+        public void ScheduleCollection(ICollectibleGrainContext item, TimeSpan timeout, DateTime now)
         {
             lock (item)
             {
@@ -94,7 +94,7 @@ namespace Orleans.Runtime
                     return;
                 }
 
-                DateTime ticket = MakeTicketFromTimeSpan(timeout);
+                DateTime ticket = MakeTicketFromTimeSpan(timeout, now);
 
                 if (default != item.CollectionTicket)
                 {
@@ -154,7 +154,7 @@ namespace Orleans.Runtime
             if (IsExpired(item.CollectionTicket)) return false;
 
             DateTime oldTicket = item.CollectionTicket;
-            DateTime newTicket = MakeTicketFromTimeSpan(timeout);
+            DateTime newTicket = MakeTicketFromTimeSpan(timeout, DateTime.UtcNow);
             // if the ticket value doesn't change, then the source and destination bucket are the same and there's nothing to do.
             if (newTicket.Equals(oldTicket)) return true;
 
@@ -239,11 +239,11 @@ namespace Orleans.Runtime
                         {
                             var keepAliveDuration = activation.KeepAliveUntil - now;
                             var timeout = TimeSpan.FromTicks(Math.Max(keepAliveDuration.Ticks, activation.CollectionAgeLimit.Ticks));
-                            ScheduleCollection(activation, timeout);
+                            ScheduleCollection(activation, timeout, now);
                         }
                         else if (!activation.IsInactive || !activation.IsStale())
                         {
-                            ScheduleCollection(activation, activation.CollectionAgeLimit);
+                            ScheduleCollection(activation, activation.CollectionAgeLimit, now);
                         }
                         else
                         {
@@ -321,10 +321,8 @@ namespace Orleans.Runtime
 
         private void AddActivationToList(ICollectibleGrainContext activation, ref List<ICollectibleGrainContext> condemned)
         {
-            condemned ??= new();
+            condemned ??= [];
             condemned.Add(activation);
-
-            this.Debug_OnDecideToCollectActivation?.Invoke(activation.GrainId);
         }
 
         private void ThrowIfTicketIsInvalid(DateTime ticket)
@@ -354,14 +352,14 @@ namespace Orleans.Runtime
             return ticket;
         }
 
-        private DateTime MakeTicketFromTimeSpan(TimeSpan timeout)
+        private DateTime MakeTicketFromTimeSpan(TimeSpan timeout, DateTime now)
         {
             if (timeout < quantum)
             {
                 throw new ArgumentException(string.Format("timeout must be at least {0}, but it is {1}", quantum, timeout), nameof(timeout));
             }
 
-            return MakeTicketFromDateTime(DateTime.UtcNow + timeout);
+            return MakeTicketFromDateTime(now + timeout);
         }
 
         private void Add(ICollectibleGrainContext item, DateTime ticket)
@@ -379,7 +377,7 @@ namespace Orleans.Runtime
             {
                 if (activation.CollectionTicket == default)
                 {
-                    ScheduleCollection(activation, activation.CollectionAgeLimit);
+                    ScheduleCollection(activation, activation.CollectionAgeLimit, DateTime.UtcNow);
                 }
                 else
                 {
@@ -421,13 +419,14 @@ namespace Orleans.Runtime
 
         private Task Start(CancellationToken cancellationToken)
         {
+            using var _ = new ExecutionContextSuppressor();
             _collectionLoopTask = RunActivationCollectionLoop();
             return Task.CompletedTask;
         }
 
         private async Task Stop(CancellationToken cancellationToken)
         {
-            _collectionTimer?.Dispose();
+            _collectionTimer.Dispose();
 
             if (_collectionLoopTask is Task task)
             {
@@ -446,8 +445,8 @@ namespace Orleans.Runtime
 
         private async Task RunActivationCollectionLoop()
         {
-            while (await _collectionTimer.NextTick())
-
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            while (await _collectionTimer.WaitForNextTickAsync())
             {
                 try
                 {
@@ -455,7 +454,7 @@ namespace Orleans.Runtime
                 }
                 catch (Exception exception)
                 {
-                    this.logger.LogError(exception, "Exception while collecting activations");
+                    this.logger.LogError(exception, "Error while collecting activations.");
                 }
             }
         }
@@ -510,7 +509,7 @@ namespace Orleans.Runtime
             var mtcs = new MultiTaskCompletionSource(list.Count);
 
             logger.LogInformation((int)ErrorCode.Catalog_ShutdownActivations_1, "DeactivateActivationsFromCollector: total {Count} to promptly Destroy.", list.Count);
-            CatalogInstruments.ActiviationShutdownViaCollection();
+            CatalogInstruments.ActivationShutdownViaCollection();
 
             void signalCompletion(Task task) => mtcs.SetOneResult();
             var reason = GetDeactivationReason();
@@ -523,18 +522,6 @@ namespace Orleans.Runtime
             }
 
             await mtcs.Task;
-        }
-
-        /// <inheritdoc/>
-        public bool CheckHealth(DateTime lastCheckTime, out string reason)
-        {
-            if (_collectionTimer is IAsyncTimer timer)
-            {
-                return timer.CheckHealth(lastCheckTime, out reason);
-            }
-
-            reason = default;
-            return true;
         }
 
         private class Bucket

@@ -45,7 +45,7 @@ namespace UnitTests.MessageCenterTests
                 return new IPEndPoint(IPAddress.Parse(uri.Host), uri.Port);
             }).ToList();
 
-            var gatewayManager = new GatewayManager(Options.Create(new GatewayOptions()), listProvider, NullLoggerFactory.Instance, null);
+            var gatewayManager = new GatewayManager(Options.Create(new GatewayOptions()), listProvider, NullLoggerFactory.Instance, null, TimeProvider.System);
             await gatewayManager.StartAsync(CancellationToken.None);
 
             var counts = new int[4];
@@ -53,6 +53,7 @@ namespace UnitTests.MessageCenterTests
             for (int i = 0; i < 2300; i++)
             {
                 var ip = gatewayManager.GetLiveGateway();
+                Assert.NotNull(ip);
                 var addr = ip.Endpoint.Address;
                 Assert.Equal(IPAddress.Loopback, addr);  // "Incorrect IP address returned for gateway"
                 Assert.True((0 < ip.Endpoint.Port) && (ip.Endpoint.Port < 5), "Incorrect IP port returned for gateway");

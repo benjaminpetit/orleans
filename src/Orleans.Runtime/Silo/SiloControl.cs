@@ -27,18 +27,16 @@ namespace Orleans.Runtime
         private readonly CachedVersionSelectorManager cachedVersionSelectorManager;
         private readonly CompatibilityDirectorManager compatibilityDirectorManager;
         private readonly VersionSelectorManager selectorManager;
+        private readonly IServiceProvider services;
         private readonly ActivationCollector _activationCollector;
         private readonly ActivationDirectory activationDirectory;
 
         private readonly IActivationWorkingSet activationWorkingSet;
 
-        private readonly IAppEnvironmentStatistics appEnvironmentStatistics;
-
-        private readonly IHostEnvironmentStatistics hostEnvironmentStatistics;
+        private readonly IEnvironmentStatisticsProvider environmentStatisticsProvider;
 
         private readonly IOptions<LoadSheddingOptions> loadSheddingOptions;
         private readonly GrainCountStatistics _grainCountStatistics;
-        private readonly Dictionary<Tuple<string,string>, IControllable> controllables;
 
         public SiloControl(
             ILocalSiloDetails localSiloDetails,
@@ -53,8 +51,7 @@ namespace Orleans.Runtime
             ActivationCollector activationCollector,
             ActivationDirectory activationDirectory,
             IActivationWorkingSet activationWorkingSet,
-            IAppEnvironmentStatistics appEnvironmentStatistics,
-            IHostEnvironmentStatistics hostEnvironmentStatistics,
+            IEnvironmentStatisticsProvider environmentStatisticsProvider,
             IOptions<LoadSheddingOptions> loadSheddingOptions,
             GrainCountStatistics grainCountStatistics)
             : base(Constants.SiloControlType, localSiloDetails.SiloAddress, loggerFactory)
@@ -67,24 +64,13 @@ namespace Orleans.Runtime
             this.cachedVersionSelectorManager = cachedVersionSelectorManager;
             this.compatibilityDirectorManager = compatibilityDirectorManager;
             this.selectorManager = selectorManager;
+            this.services = services;
             _activationCollector = activationCollector;
             this.activationDirectory = activationDirectory;
             this.activationWorkingSet = activationWorkingSet;
-            this.appEnvironmentStatistics = appEnvironmentStatistics;
-            this.hostEnvironmentStatistics = hostEnvironmentStatistics;
+            this.environmentStatisticsProvider = environmentStatisticsProvider;
             this.loadSheddingOptions = loadSheddingOptions;
             _grainCountStatistics = grainCountStatistics;
-            this.controllables = new Dictionary<Tuple<string, string>, IControllable>();
-            IEnumerable<IKeyedServiceCollection<string, IControllable>> namedIControllableCollections = services.GetServices<IKeyedServiceCollection<string, IControllable>>();
-            foreach (IKeyedService<string, IControllable> keyedService in namedIControllableCollections.SelectMany(c => c.GetServices(services)))
-            {
-                IControllable controllable = keyedService.GetService(services);
-                if(controllable != null)
-                {
-                    this.controllables.Add(Tuple.Create(controllable.GetType().FullName, keyedService.Key), controllable);
-                }
-            }
-
         }
 
         public Task Ping(string message)
@@ -120,8 +106,7 @@ namespace Orleans.Runtime
             var stats = new SiloRuntimeStatistics(
                 activationCount,
                 activationWorkingSet.Count,
-                this.appEnvironmentStatistics,
-                this.hostEnvironmentStatistics,
+                this.environmentStatisticsProvider,
                 this.loadSheddingOptions,
                 DateTime.UtcNow);
             return Task.FromResult(stats);
@@ -157,17 +142,22 @@ namespace Orleans.Runtime
             return Task.FromResult(this.catalog.ActivationCount);
         }
 
-        public Task<object> SendControlCommandToProvider(string providerTypeFullName, string providerName, int command, object arg)
+        public Task<object> SendControlCommandToProvider<T>(string providerName, int command, object arg) where T : IControllable
         {
-            IControllable controllable;
-            if(!this.controllables.TryGetValue(Tuple.Create(providerTypeFullName, providerName), out controllable))
+            var t = services
+                    .GetKeyedServices<IControllable>(providerName);
+            var controllable = services
+                    .GetKeyedServices<IControllable>(providerName)
+                    .FirstOrDefault(svc => svc.GetType() == typeof(T));
+
+            if (controllable == null)
             {
                 logger.LogError(
                     (int)ErrorCode.Provider_ProviderNotFound,
                     "Could not find a controllable service for type {ProviderTypeFullName} and name {ProviderName}.",
-                    providerTypeFullName,
+                    typeof(IControllable).FullName,
                     providerName);
-                throw new ArgumentException($"Could not find a controllable service for type {providerTypeFullName} and name {providerName}.");
+                throw new ArgumentException($"Could not find a controllable service for type {typeof(IControllable).FullName} and name {providerName}.");
             }
 
             return controllable.ExecuteCommand(command, arg);

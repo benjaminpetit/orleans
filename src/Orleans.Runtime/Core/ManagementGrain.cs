@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Orleans.Concurrency;
 using Orleans.Metadata;
+using Orleans.Placement.Repartitioning;
+using Orleans.Providers;
 using Orleans.Runtime.GrainDirectory;
 using Orleans.Runtime.MembershipService;
 using Orleans.Versions;
@@ -215,10 +217,10 @@ namespace Orleans.Runtime.Management
             return sum;
         }
 
-        public Task<object[]> SendControlCommandToProvider(string providerTypeFullName, string providerName, int command, object arg)
+        public Task<object[]> SendControlCommandToProvider<T>(string providerName, int command, object arg) where T : IControllable
         {
-            return ExecutePerSiloCall(isc => isc.SendControlCommandToProvider(providerTypeFullName, providerName, command, arg),
-                $"SendControlCommandToProvider of type {providerTypeFullName} and name {providerName} command {command}.");
+            return ExecutePerSiloCall(isc => isc.SendControlCommandToProvider<T>(providerName, command, arg),
+                $"SendControlCommandToProvider of type {typeof(T).FullName} and name {providerName} command {command}.");
         }
 
         public ValueTask<SiloAddress> GetActivationAddress(IAddressable reference)
@@ -369,6 +371,50 @@ namespace Orleans.Runtime.Management
             }
 
             return results;
+        }
+
+        public async Task<List<GrainCallFrequency>> GetGrainCallFrequencies(SiloAddress[] hostsIds = null)
+        {
+            if (hostsIds == null)
+            {
+                var hosts = await GetHosts(true);
+                hostsIds = [.. hosts.Keys];
+            }
+
+            var results = new List<GrainCallFrequency>();
+            foreach (var host in hostsIds)
+            {
+                var siloBalancer = IActivationRepartitionerSystemTarget.GetReference(internalGrainFactory, host);
+                var frequencies = await siloBalancer.GetGrainCallFrequencies();
+                foreach (var frequency in frequencies)
+                {
+                    results.Add(new GrainCallFrequency
+                    {
+                        SourceGrain = frequency.Item1.Source.Id,
+                        TargetGrain = frequency.Item1.Target.Id,
+                        SourceHost = frequency.Item1.Source.Silo,
+                        TargetHost = frequency.Item1.Target.Silo,
+                        CallCount = frequency.Item2
+                    });
+                }
+            }
+
+            return results;
+        }
+
+        public async ValueTask ResetGrainCallFrequencies(SiloAddress[] hostsIds = null)
+        {
+            if (hostsIds == null)
+            {
+                var hosts = await GetHosts(true);
+                hostsIds = [.. hosts.Keys];
+            }
+
+            foreach (var host in hostsIds)
+            {
+                var siloBalancer = IActivationRepartitionerSystemTarget.GetReference(internalGrainFactory, host);
+                await siloBalancer.ResetCounters();
+            }
         }
     }
 }

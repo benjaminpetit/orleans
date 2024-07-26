@@ -7,7 +7,7 @@ using static Orleans.Persistence.Cosmos.CosmosIdSanitizer;
 
 namespace Orleans.Persistence.Cosmos;
 
-internal class CosmosGrainStorage : IGrainStorage, ILifecycleParticipant<ISiloLifecycle>
+public class CosmosGrainStorage : IGrainStorage, ILifecycleParticipant<ISiloLifecycle>
 {
     private const string ANY_ETAG = "*";
     private const string KEY_STRING_SEPARATOR = "__";
@@ -210,7 +210,17 @@ internal class CosmosGrainStorage : IGrainStorage, ILifecycleParticipant<ISiloLi
             if (_options.DeleteStateOnClear)
             {
                 if (string.IsNullOrWhiteSpace(grainState.ETag))
-                    return;  //state not written
+                {
+                    await ReadStateAsync<T>(grainType, grainId, grainState);
+                    if (grainState.RecordExists)
+                    {
+                        // State exists but the current activation has not observed state creation. Therefore, we have inconsistent state and should throw to give the grain a chance to deactivate and recover.
+                        throw new CosmosConditionNotSatisfiedException(grainType, grainId, _options.ContainerName, grainState.ETag, "None");
+                    }
+
+                    // State does not exist.
+                    return;
+                }
 
                 await _executor.ExecuteOperation(static args =>
                 {
@@ -401,10 +411,10 @@ internal class CosmosGrainStorage : IGrainStorage, ILifecycleParticipant<ISiloLi
 
 public static class CosmosStorageFactory
 {
-    public static IGrainStorage Create(IServiceProvider services, string name)
+    public static CosmosGrainStorage Create(IServiceProvider services, string name)
     {
         var optionsMonitor = services.GetRequiredService<IOptionsMonitor<CosmosGrainStorageOptions>>();
-        var partitionKeyProvider = services.GetServiceByName<IPartitionKeyProvider>(name)
+        var partitionKeyProvider = services.GetKeyedService<IPartitionKeyProvider>(name)
             ?? services.GetRequiredService<IPartitionKeyProvider>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
         var clusterOptions = services.GetRequiredService<IOptions<ClusterOptions>>();

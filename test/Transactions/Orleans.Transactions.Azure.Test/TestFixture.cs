@@ -6,6 +6,7 @@ using Orleans.Transactions.Tests;
 using TestExtensions;
 using Tester;
 using Microsoft.Extensions.Configuration;
+using Tester.AzureUtils;
 
 namespace Orleans.Transactions.AzureStorage.Tests
 {
@@ -28,11 +29,11 @@ namespace Orleans.Transactions.AzureStorage.Tests
             public void Configure(ISiloBuilder hostBuilder)
             {
                 hostBuilder
-                    .ConfigureServices(services => services.AddSingletonNamedService<IRemoteCommitService, RemoteCommitService>(TransactionTestConstants.RemoteCommitService))
+                    .ConfigureServices(services => services.AddKeyedSingleton<IRemoteCommitService, RemoteCommitService>(TransactionTestConstants.RemoteCommitService))
                     .ConfigureTracingForTransactionTests()
                     .AddAzureTableTransactionalStateStorage(TransactionTestConstants.TransactionStore, options =>
                     {
-                        options.ConfigureTableServiceClient(TestDefaultConfiguration.DataConnectionString);
+                        options.TableServiceClient = AzureStorageOperationOptionsExtensions.GetTableServiceClient();
                     })
                     .UseTransactions();
             }
@@ -70,7 +71,7 @@ namespace Orleans.Transactions.AzureStorage.Tests
                     .ConfigureTracingForTransactionTests()
                     .AddFaultInjectionAzureTableTransactionalStateStorage(TransactionTestConstants.TransactionStore, options =>
                     {
-                        options.ConfigureTableServiceClient(TestDefaultConfiguration.DataConnectionString);
+                        options.TableServiceClient = AzureStorageOperationOptionsExtensions.GetTableServiceClient();
                     })
                     .UseControlledFaultInjectionTransactionState()
                     .UseTransactions()
@@ -110,7 +111,7 @@ namespace Orleans.Transactions.AzureStorage.Tests
                     .ConfigureTracingForTransactionTests()
                     .AddFaultInjectionAzureTableTransactionalStateStorage(TransactionTestConstants.TransactionStore, options =>
                     {
-                        options.ConfigureTableServiceClient(TestDefaultConfiguration.DataConnectionString);
+                        options.TableServiceClient = AzureStorageOperationOptionsExtensions.GetTableServiceClient();
                     })
                     .UseTransactions()
                     .ConfigureServices(services => services.AddSingleton<ITransactionFaultInjector>(sp => new RandomErrorInjector(probability)));
