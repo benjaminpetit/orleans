@@ -22,7 +22,8 @@ namespace Tester.AzureUtils
             }
         };
 
-        public static DefaultAzureCredential Credential = new DefaultAzureCredential(Options);
+        //public static DefaultAzureCredential Credential = new DefaultAzureCredential(Options);
+        public static WorkloadIdentityCredential Credential = new WorkloadIdentityCredential();
 
         public static Orleans.Clustering.AzureStorage.AzureStorageOperationOptions ConfigureTestDefaults(this Orleans.Clustering.AzureStorage.AzureStorageOperationOptions options)
         {
