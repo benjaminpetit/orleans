@@ -57,11 +57,18 @@ namespace TestExtensions
             get
             {
                 // TODO BEPETIT
-                var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
-                var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
-                var serviceConnectionId = Environment.GetEnvironmentVariable("SERVICE_CONNECTION_ID");
-                var systemAccessToken = Environment.GetEnvironmentVariable("SYSTEM_ACCESSTOKEN");
-                return new AzurePipelinesCredential(tenantId, clientId, serviceConnectionId, systemAccessToken);
+                //var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
+                //var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+                //var serviceConnectionId = Environment.GetEnvironmentVariable("SERVICE_CONNECTION_ID");
+                //var systemAccessToken = Environment.GetEnvironmentVariable("SYSTEM_ACCESSTOKEN");
+                //return new AzurePipelinesCredential(tenantId, clientId, serviceConnectionId, systemAccessToken);
+                var clientId = Environment.GetEnvironmentVariable("servicePrincipalId");
+                var options = new DefaultAzureCredentialOptions();
+                if (!string.IsNullOrEmpty(clientId))
+                {
+                    options.ManagedIdentityClientId = clientId;
+                }
+                return new DefaultAzureCredential(options);
             }
         }
 
