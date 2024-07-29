@@ -1,3 +1,5 @@
+using Azure.Core;
+using Azure.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Primitives;
@@ -50,6 +52,18 @@ namespace TestExtensions
         public static string DynamoDbAccessKey => defaultConfiguration[nameof(DynamoDbAccessKey)];
         public static string DynamoDbSecretKey => defaultConfiguration[nameof(DynamoDbSecretKey)];
         public static string SqsConnectionString => defaultConfiguration[nameof(SqsConnectionString)];
+        public static TokenCredential TokenCredential
+        {
+            get
+            {
+                // TODO BEPETIT
+                var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
+                var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+                var serviceConnectionId = Environment.GetEnvironmentVariable("SERVICE_CONNECTION_ID");
+                var systemAccessToken = Environment.GetEnvironmentVariable("SYSTEM_ACCESSTOKEN");
+                return new AzurePipelinesCredential(tenantId, clientId, serviceConnectionId, systemAccessToken);
+            }
+        }
 
         public static bool GetValue(string key, out string value)
         {
