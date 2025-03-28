@@ -5,21 +5,27 @@ using Orleans.Runtime;
 using System.Net;
 using System.Collections.Generic;
 using System.Threading;
-using System.Runtime.CompilerServices;
 
 namespace Orleans.Storage
 {
     public readonly struct StorageEntry
     {
-        public string Name { get; }
+        public string GrainType { get; }
         public GrainReference GrainReference { get; }
         public IGrainState GrainState { get; }
 
-        public StorageEntry(string name, GrainReference grainReference, IGrainState grainState)
+        /// <summary>
+        /// Represents the pointer to the entry in the underlying storage.
+        /// </summary>
+        public object Cursor { get; }
+
+        public StorageEntry(string name, GrainReference grainReference, IGrainState grainState, object cursor)
         {
-            this.Name = name;
-            this.GrainReference = grainReference;
-            this.GrainState = grainState;
+            GrainType = name;
+            GrainReference = grainReference;
+            GrainState = grainState;
+
+            Cursor = cursor;
         }
     }
 
@@ -48,12 +54,18 @@ namespace Orleans.Storage
         /// <param name="grainState">Copy of last-known state data object for this grain.</param>
         /// <returns>Completion promise for the Delete operation on the specified grain.</returns>
         Task ClearStateAsync(string grainType, GrainReference grainReference, IGrainState grainState);
+    }
 
+    /// <summary>
+    /// Interface which extends <see cref="IGrainStorage"/> to provide API over underlying storage entries
+    /// </summary>
+    public interface IExtendedGrainStorage : IGrainStorage
+    {
         /// <summary>
         /// Get all entries in storage
         /// </summary>
         /// <returns>The entries in storage</returns>
-        IAsyncEnumerable<StorageEntry> GetAll(CancellationToken cancellationToken);
+        IAsyncEnumerable<StorageEntry> GetAll(object storageEntryCursor, CancellationToken cancellationToken);
     }
 
     /// <summary>

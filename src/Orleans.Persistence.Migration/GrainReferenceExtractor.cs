@@ -1,17 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Orleans.Runtime;
-using Orleans.Serialization.Configuration;
-using Orleans.Serialization;
-using Orleans.Serialization.TypeSystem;
-using Orleans.Core;
-using System.Diagnostics.Metrics;
 using Orleans.Metadata;
 using GrainTypeResolver = Orleans.Metadata.GrainTypeResolver;
 
@@ -20,6 +7,8 @@ namespace Orleans.Persistence.Migration
     public interface IGrainReferenceExtractor
     {
         (GrainType grainType, GrainInterfaceType grainInterfaceType, IdSpan key) Extract(GrainReference grainReference);
+
+        Type ExtractType(GrainReference grainReference);
     }
 
     public static class GrainReferenceExtractorExtension
@@ -45,6 +34,14 @@ namespace Orleans.Persistence.Migration
             _grainTypeManager = grainTypeManager;
             _grainTypeResolver = grainTypeResolver;
             _grainInterfaceTypeResolver = grainInterfaceTypeResolver;
+        }
+
+        public Type ExtractType(GrainReference grainReference)
+        {
+            var typeCode = grainReference.GrainIdentity.TypeCode;
+            _grainTypeManager.GetTypeInfo(typeCode, out var grainClass, out _, grainReference.GenericArguments);
+            Type grainType = LookupType(grainClass) ?? throw new ArgumentException("Grain type not found");
+            return grainType;
         }
 
         public (GrainType grainType, GrainInterfaceType grainInterfaceType, IdSpan key) Extract(GrainReference grainReference)

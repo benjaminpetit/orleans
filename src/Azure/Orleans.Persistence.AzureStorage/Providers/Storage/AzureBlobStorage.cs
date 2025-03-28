@@ -15,10 +15,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Configuration;
-using Orleans.Persistence.AzureStorage;
+using Orleans.Persistence.AzureStorage.Providers.Storage.Cursors;
 using Orleans.Providers.Azure;
 using Orleans.Runtime;
-using Orleans.Runtime.Configuration;
 using Orleans.Serialization;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -27,8 +26,10 @@ namespace Orleans.Storage
     /// <summary>
     /// Simple storage provider for writing grain state data to Azure blob storage in JSON format.
     /// </summary>
-    public class AzureBlobGrainStorage : IGrainStorage, ILifecycleParticipant<ISiloLifecycle>
+    public class AzureBlobGrainStorage : IExtendedGrainStorage, ILifecycleParticipant<ISiloLifecycle>
     {
+        static Regex _pickAllBlobsRegex = new Regex("(?<name>[^-]+)-(?<reference>[^-]+).json");
+
         private JsonSerializerSettings jsonSettings;
 
         private BlobContainerClient container;
@@ -312,20 +313,34 @@ namespace Orleans.Storage
             return result;
         }
 
-        public async IAsyncEnumerable<StorageEntry> GetAll([EnumeratorCancellation] CancellationToken cancellationToken)
+        public async IAsyncEnumerable<StorageEntry> GetAll(object storageEntryCursor, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            var regex = new Regex("(?<name>[^-]+)-(?<reference>[^-]+).json");
-            await foreach (var item in this.container.GetBlobsAsync(cancellationToken: cancellationToken))
+            await foreach (var blobHierarchyItem in this.container.GetBlobsByHierarchyAsync(cancellationToken: cancellationToken))
             {
-                var match = regex.Match(item.Name);
-                if (match.Success)
+                var blob = blobHierarchyItem.Blob;
+                // skipping items which are "less" lexicographically than the cursor. There is no other way to do at a call level to storage according to parameters
+                // https://learn.microsoft.com/en-gb/rest/api/storageservices/list-blobs?tabs=microsoft-entra-id#uri-parameters
+                if (storageEntryCursor is AzureBlobStorageEntryCursor cursor)
                 {
-                    var name = match.Groups["name"].Value;
-                    var reference = GrainReference.FromKeyString(match.Groups["reference"].Value, this.grainReferenceRuntime);
-                    var state = new GrainState<object>();
-                    await ReadStateAsync(name, reference, state);
-                    yield return new StorageEntry(name, reference, state);
+                    if (string.Compare(blob.Name, cursor.BlobName, StringComparison.Ordinal) <= 0)
+                    {
+                        continue;
+                    }
                 }
+
+                var match = _pickAllBlobsRegex.Match(blob.Name);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                var name = match.Groups["name"].Value;
+                var reference = GrainReference.FromKeyString(match.Groups["reference"].Value, this.grainReferenceRuntime);
+                var state = new GrainState<object>();
+                await ReadStateAsync(name, reference, state);
+
+                var entryCursor = new AzureBlobStorageEntryCursor(blob.Name);
+                yield return new StorageEntry(name, reference, state, entryCursor);
             }
         }
     }

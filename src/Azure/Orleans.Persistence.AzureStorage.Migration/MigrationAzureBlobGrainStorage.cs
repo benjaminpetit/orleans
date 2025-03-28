@@ -20,8 +20,12 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 namespace Orleans.Storage.Migration.AzureStorage
 {
     /// <summary>
-    /// Simple storage provider for writing grain state data to Azure blob storage in JSON format.
+    /// Migration storage provider for writing grain state data format to Azure blob storage in JSON format.
     /// </summary>
+    /// <notes>
+    /// Is similar to <see cref="AzureBlobGrainStorage"/> with the difference
+    /// of using <see cref="IGrainReferenceExtractor"/> for converting grainReference into a migrated (new) format.
+    /// </notes>
     public class MigrationAzureBlobGrainStorage : IGrainStorage, ILifecycleParticipant<ISiloLifecycle>
     {
         private BlobContainerClient container;
@@ -253,7 +257,7 @@ namespace Orleans.Storage.Migration.AzureStorage
                 var options = new BlobUploadOptions
                 {
                     HttpHeaders = new BlobHttpHeaders { ContentType = mimeType },
-                    Conditions = conditions,
+                    Conditions = conditions
                 };
 
                 var result = await DoOptimisticUpdate(
@@ -348,7 +352,6 @@ namespace Orleans.Storage.Migration.AzureStorage
         /// </summary>
         /// <param name="contents">The serialized contents.</param>
         private object ConvertFromStorageFormat(BinaryData contents) => this.grainStorageSerializer.Deserialize<object>(contents);
-        public IAsyncEnumerable<StorageEntry> GetAll(CancellationToken cancellationToken) => throw new NotImplementedException();
     }
 
     public static class MigrationAzureBlobGrainStorageFactory

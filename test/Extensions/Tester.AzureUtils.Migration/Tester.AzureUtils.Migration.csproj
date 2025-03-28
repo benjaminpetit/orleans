@@ -1,16 +1,13 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>$(TestTargetFrameworks);net7.0</TargetFrameworks>
+    <TargetFrameworks>net6.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <PropertyGroup Condition="  '$(TargetFramework)' == 'net7.0' ">
-    <DefineConstants>NET70</DefineConstants>
-  </PropertyGroup>
-
   <ItemGroup>
+    <PackageReference Include="Moq" Version="$(MoqVersion)" />
     <PackageReference Include="Azure.Data.Tables" Version="$(AzureDataTablesVersion)" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="$(MicrosoftTestSdkVersion)" />
     <PackageReference Include="Azure.Identity" Version="$(AzureIdentityVersion)" />
@@ -19,7 +16,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\Azure\Orleans.Persistence.AzureStorage.Migration\Orleans.Persistence.AzureStorage.Migration.csproj" Condition=" '$(TargetFramework)' == 'net7.0' " />
+    <ProjectReference Include="..\..\Grains\TestGrainsNet8\TestGrainsNet8.csproj" />
+    <ProjectReference Include="..\..\..\src\Orleans.Persistence.Migration\Orleans.Persistence.Migration.csproj" />
+    <ProjectReference Include="..\..\..\src\Azure\Orleans.Persistence.Cosmos.Migration\Orleans.Persistence.Cosmos.Migration.csproj" />
+    <ProjectReference Include="..\..\..\src\Azure\Orleans.Persistence.AzureStorage.Migration\Orleans.Persistence.AzureStorage.Migration.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\Orleans.Core.Abstractions\Orleans.Core.Abstractions.csproj" />
     <ProjectReference Include="..\..\..\src\Orleans.Core\Orleans.Core.csproj" />
     <ProjectReference Include="..\..\..\src\Orleans.TestingHost\Orleans.TestingHost.csproj" />

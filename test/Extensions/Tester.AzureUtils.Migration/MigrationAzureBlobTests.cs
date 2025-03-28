@@ -1,15 +1,21 @@
-#if NET70
 using Orleans.Hosting;
 using Orleans.Persistence.Migration;
 using Orleans.TestingHost;
+using Tester.AzureUtils.Migration.Abstractions;
+using TesterInternal.AzureInfra;
 using Xunit;
 
 namespace Tester.AzureUtils.Migration
 {
-    [TestCategory("Functionals"), TestCategory("Migration"), TestCategory("Azure"), TestCategory("AzureBlobStorage")]
-    public class MigrationAzureBlobTests : MigrationBaseTests, IClassFixture<MigrationAzureBlobTests.Fixture>
+    [TestCategory("Functional"), TestCategory("Migration"), TestCategory("Azure"), TestCategory("AzureBlobStorage")]
+    public class MigrationAzureBlobTests : MigrationGrainsTests, IClassFixture<MigrationAzureBlobTests.Fixture>
     {
         public static Guid Guid = Guid.NewGuid();
+
+        public MigrationAzureBlobTests(Fixture fixture) : base(fixture)
+        {
+            fixture.EnsurePreconditionsMet();
+        }
 
         public class Fixture : BaseAzureTestClusterFixture
         {
@@ -29,6 +35,8 @@ namespace Tester.AzureUtils.Migration
                     {
                         options.SourceStorageName = SourceStorageName;
                         options.DestinationStorageName = DestinationStorageName;
+
+                        options.Mode = GrainMigrationMode.ReadDestinationWithFallback_WriteBoth;
                     })
                     .AddAzureBlobGrainStorage(SourceStorageName, options =>
                     {
@@ -39,13 +47,9 @@ namespace Tester.AzureUtils.Migration
                     {
                         options.ConfigureTestDefaults();
                         options.ContainerName = $"destination{Guid}";
-                    });
+                    })
+                    .AddDataMigrator(SourceStorageName, DestinationStorageName);
             }
-        }
-
-        public MigrationAzureBlobTests(Fixture fixture) : base(fixture)
-        {
-        }
+        }   
     }
 }
-#endif
