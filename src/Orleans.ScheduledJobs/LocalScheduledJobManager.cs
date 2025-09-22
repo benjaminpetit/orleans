@@ -1,13 +1,28 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Orleans.Runtime;
 
 namespace Orleans.ScheduledJobs;
 
-public class LocalScheduledJobManager : SystemTarget
+public interface ILocalScheduledJobManager
+{
+    Task<IScheduledJob> ScheduleJobAsync(IGrainBase grain, string jobName, DateTime scheduledTime);
+}
+
+internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManager, ILifecycleParticipant<ISiloLifecycle>
 {
     private readonly JobShardManager _shardManager;
+    private CancellationTokenSource _cts = new();
+
+    public LocalScheduledJobManager(JobShardManager shardManager)
+    {
+        _shardManager = shardManager;
+    }
+
     private readonly ConcurrentDictionary<DateTime, ConcurrentBag<JobShard>> _shardCache = new();
     private readonly int MaxJobCountPerShard = 1000;
 
@@ -30,6 +45,38 @@ public class LocalScheduledJobManager : SystemTarget
         var job = await newShard.ScheduleJobAsync(grain, jobName, scheduledTime);
         RunShard(newShard).Ignore();
         return job;
+    }
+
+    public void Participate(ISiloLifecycle lifecycle)
+    {
+        lifecycle.Subscribe(
+            nameof(LocalScheduledJobManager),
+            ServiceLifecycleStage.Active,
+            ct => Start(ct),
+            ct => Stop(ct));
+    }
+
+    private Task Stop(CancellationToken ct)
+    {
+        // TODO Wait for running shards to complete
+        _cts.Cancel();
+        return Task.CompletedTask;
+    }
+
+    private async Task Start(CancellationToken ct)
+    {
+        while (!_cts.Token.IsCancellationRequested)
+        {
+            var shards = await _shardManager.GetJobShardsAsync(this.Silo, DateTime.UtcNow.AddHours(1));
+            if (shards.Count > 0)
+            {
+                foreach (var shard in shards)
+                {
+                    RunShard(shard).Ignore();
+                }
+            }
+            await Task.Delay(TimeSpan.FromMinutes(1), ct);
+        }
     }
 
     private async Task RunShard(JobShard shard)
