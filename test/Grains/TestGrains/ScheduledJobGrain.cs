@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans.ScheduledJobs;
 using UnitTests.GrainInterfaces;
 
@@ -12,10 +13,12 @@ public class ScheduledJobGrain : Grain, IScheduledJobGrain, IScheduledJobReceive
 {
     private Dictionary<string, bool> jobRunStatus = new();
     private readonly ILocalScheduledJobManager _localScheduledJobManager;
+    private readonly ILogger<ScheduledJobGrain> _logger;
 
-    public ScheduledJobGrain(ILocalScheduledJobManager localScheduledJobManager)
+    public ScheduledJobGrain(ILocalScheduledJobManager localScheduledJobManager, ILogger<ScheduledJobGrain> logger)
     {
         _localScheduledJobManager = localScheduledJobManager;
+        _logger = logger;
     }
 
     public Task<bool> HasJobRan(string jobId)
@@ -25,6 +28,7 @@ public class ScheduledJobGrain : Grain, IScheduledJobGrain, IScheduledJobReceive
 
     public Task ReceiveScheduledJobAsync(IScheduledJob job)
     {
+        _logger.LogInformation($"Job {job.JobId} received at {DateTime.UtcNow}");
         jobRunStatus[job.JobId] = true;
         return Task.CompletedTask;
     }

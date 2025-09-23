@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Orleans.Runtime;
+using Orleans.Runtime.Scheduler;
 
 namespace Orleans.ScheduledJobs;
 
@@ -18,7 +19,8 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
     private readonly JobShardManager _shardManager;
     private CancellationTokenSource _cts = new();
 
-    public LocalScheduledJobManager(JobShardManager shardManager)
+    public LocalScheduledJobManager(JobShardManager shardManager, SystemTargetShared shared)
+        : base(SystemTargetGrainId.CreateGrainType("scheduledjobs-manager"), shared)
     {
         _shardManager = shardManager;
     }
@@ -43,7 +45,7 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
         var newShard = await CreateJobShardAsync(key);
         shards.Add(newShard);
         var job = await newShard.ScheduleJobAsync(grain, jobName, scheduledTime);
-        RunShard(newShard).Ignore();
+        this.QueueTask(() => RunShard(newShard)).Ignore();
         return job;
     }
 
@@ -63,20 +65,24 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
         return Task.CompletedTask;
     }
 
-    private async Task Start(CancellationToken ct)
+    private Task Start(CancellationToken ct)
     {
-        while (!_cts.Token.IsCancellationRequested)
+        this.QueueTask(async () =>
         {
-            var shards = await _shardManager.GetJobShardsAsync(this.Silo, DateTime.UtcNow.AddHours(1));
-            if (shards.Count > 0)
+            while (!_cts.Token.IsCancellationRequested)
             {
-                foreach (var shard in shards)
+                var shards = await _shardManager.GetJobShardsAsync(this.Silo, DateTime.UtcNow.AddHours(1));
+                if (shards.Count > 0)
                 {
-                    RunShard(shard).Ignore();
+                    foreach (var shard in shards)
+                    {
+                        RunShard(shard).Ignore();
+                    }
                 }
+                await Task.Delay(TimeSpan.FromMinutes(1), ct);
             }
-            await Task.Delay(TimeSpan.FromMinutes(1), ct);
-        }
+        });
+        return Task.CompletedTask;
     }
 
     private async Task RunShard(JobShard shard)

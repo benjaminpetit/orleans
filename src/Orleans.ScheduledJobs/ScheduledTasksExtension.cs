@@ -2,12 +2,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Orleans.Configuration.Internal;
 using Orleans.Hosting;
 using Orleans.Runtime;
+using Orleans.ScheduledJobs;
 
-namespace Orleans.ScheduledJobs;
+namespace Orleans.Hosting;
 
-public static class  ScheduledTasksExtension
+public static class  ScheduledJobsExtension
 {
-    public static ISiloBuilder AddInMemoryScheduledTasks(this ISiloBuilder builder)
+    public static ISiloBuilder UseInMemoryScheduledJobs(this ISiloBuilder builder)
     {
         return builder.ConfigureServices(services =>
         {
