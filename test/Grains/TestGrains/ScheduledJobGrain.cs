@@ -28,15 +28,15 @@ public class ScheduledJobGrain : Grain, IScheduledJobGrain, IScheduledJobReceive
 
     public Task ReceiveScheduledJobAsync(IScheduledJob job)
     {
-        _logger.LogInformation($"Job {job.JobId} received at {DateTime.UtcNow}");
-        jobRunStatus[job.JobId] = true;
+        _logger.LogInformation($"Job {job.Id} received at {DateTime.UtcNow}");
+        jobRunStatus[job.Id] = true;
         return Task.CompletedTask;
     }
 
     public async Task<IScheduledJob> ScheduleJobAsync(string jobName, DateTime scheduledTime)
     {
-        var job = await _localScheduledJobManager.ScheduleJobAsync(this, jobName, scheduledTime);
-        jobRunStatus[job.JobId] = false;
+        var job = await _localScheduledJobManager.ScheduleJobAsync(this.GetGrainId(), jobName, scheduledTime);
+        jobRunStatus[job.Id] = false;
         return job;
     }
 }

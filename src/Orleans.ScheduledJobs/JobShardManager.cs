@@ -26,7 +26,7 @@ internal class InMemoryJobShardManager : JobShardManager
             var result = new List<JobShard>();
             foreach (var shard in shards)
             {
-                if (shard.MaxScheduledTime <= maxDueTime)
+                if (shard.EndTime <= maxDueTime)
                 {
                     result.Add(shard);
                 }
@@ -54,7 +54,7 @@ internal class InMemoryJobShardManager : JobShardManager
         foreach (var key in _shardStore.Keys)
         {
             var shards = _shardStore[key];
-            var shardToRemove = shards.Find(s => s.ShardId == shardId);
+            var shardToRemove = shards.Find(s => s.Id == shardId);
             if (shardToRemove != null)
             {
                 shards.Remove(shardToRemove);

@@ -5,21 +5,22 @@ namespace Orleans.ScheduledJobs;
 
 public interface IScheduledJob
 {
-    string JobId { get; init; }
-    string JobName { get; init; }
-    DateTime ScheduledTime { get; init; }
+    string Id { get; init; }
+    string Name { get; init; }
+    DateTime ScheduledAt { get; init; }
     GrainId TargetGrainId { get; init; }
 }
 
 [GenerateSerializer]
+[Alias("Orleans.ScheduledJobs.ScheduledJob")]
 public class ScheduledJob : IScheduledJob
 {
     [Id(0)]
-    public string JobId { get; init; }
+    public required string Id { get; init; }
     [Id(1)]
-    public string JobName { get; init; }
+    public required string Name { get; init; }
     [Id(2)]
-    public DateTime ScheduledTime { get; init; }
+    public DateTime ScheduledAt { get; init; }
     [Id(3)]
     public GrainId TargetGrainId { get; init; }
 }

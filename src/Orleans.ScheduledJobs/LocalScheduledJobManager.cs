@@ -11,7 +11,7 @@ namespace Orleans.ScheduledJobs;
 
 public interface ILocalScheduledJobManager
 {
-    Task<IScheduledJob> ScheduleJobAsync(IGrainBase grain, string jobName, DateTime scheduledTime);
+    Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt);
 }
 
 internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManager, ILifecycleParticipant<ISiloLifecycle>
@@ -28,23 +28,23 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
     private readonly ConcurrentDictionary<DateTime, ConcurrentBag<JobShard>> _shardCache = new();
     private readonly int MaxJobCountPerShard = 1000;
 
-    public async Task<IScheduledJob> ScheduleJobAsync(IGrainBase grain, string jobName, DateTime scheduledTime)
+    public async Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt)
     {
-        var key = GetShardKey(scheduledTime);
+        var key = GetShardKey(scheduledAt);
         // Try to get all the available shards for this key
         var shards = _shardCache.GetOrAdd(key, _ => new ConcurrentBag<JobShard>());
         // Find a shard that can accept this job
         foreach (var shard in shards)
         {
-            if (shard.NextScheduledTime <= scheduledTime && shard.MaxScheduledTime >= scheduledTime && shard.JobCount <= MaxJobCountPerShard)
+            if (shard.StartTime <= scheduledAt && shard.EndTime >= scheduledAt && shard.JobCount <= MaxJobCountPerShard)
             {
-                return await shard.ScheduleJobAsync(grain, jobName, scheduledTime);
+                return await shard.ScheduleJobAsync(target, jobName, scheduledAt);
             }
         }
         // No available shard found, create a new one
         var newShard = await CreateJobShardAsync(key);
         shards.Add(newShard);
-        var job = await newShard.ScheduleJobAsync(grain, jobName, scheduledTime);
+        var job = await newShard.ScheduleJobAsync(target, jobName, scheduledAt);
         this.QueueTask(() => RunShard(newShard)).Ignore();
         return job;
     }
@@ -76,7 +76,7 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
                 {
                     foreach (var shard in shards)
                     {
-                        RunShard(shard).Ignore();
+                        RunShard(shard).Ignore(); // TODO: keep track of running shards
                     }
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1), ct);
@@ -87,32 +87,26 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
 
     private async Task RunShard(JobShard shard)
     {
-        while (shard.JobCount > 0 || shard.MaxScheduledTime > DateTime.UtcNow.AddMinutes(1))
+        // Process all jobs in the shard
+        await foreach (var job in shard.ReadJobsAsync().WithCancellation(_cts.Token))
         {
-            var job = await shard.GetNextJobAsync();
-            if (job != null)
+            try
             {
-                try
-                {
-                    // TODO: Do it in parallel, with concurrency limit
-                    var target = this.RuntimeClient.InternalGrainFactory
-                        .GetGrain(job.TargetGrainId)
-                        .AsReference<IScheduledJobReceiver>();
-                    await target.ReceiveScheduledJobAsync(job);
-                    await shard.RemoveJobAsync(job.JobId);
-                }
-                catch (Exception ex)
-                {
-                    // Log the exception
-                    Console.WriteLine($"Error executing job {job.JobId}: {ex}");
-                }
+                // TODO: Do it in parallel, with concurrency limit
+                var target = this.RuntimeClient.InternalGrainFactory
+                    .GetGrain(job.TargetGrainId)
+                    .AsReference<IScheduledJobReceiver>();
+                await target.ReceiveScheduledJobAsync(job);
+                await shard.RemoveJobAsync(job.Id);
             }
-            else
+            catch (Exception ex)
             {
-                await Task.Delay(1000); // Wait for new jobs
+                // TODO Log the exception
+                Console.WriteLine($"Error executing job {job.Id}: {ex}");
             }
         }
-        await _shardManager.DeleteShard(shard.ShardId);
+        // After all jobs are processed, delete the shard
+        await _shardManager.DeleteShard(shard.Id);
     }
 
     private DateTime GetShardKey(DateTime scheduledTime)

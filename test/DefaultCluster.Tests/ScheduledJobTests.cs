@@ -21,18 +21,18 @@ public class ScheduledJobTests : HostedTestClusterEnsureDefaultStarted
         var scheduledTime = DateTime.UtcNow.AddSeconds(5);
         var job1 = await grain.ScheduleJobAsync("TestJob", scheduledTime);
         Assert.NotNull(job1);
-        Assert.Equal("TestJob", job1.JobName);
-        Assert.Equal(scheduledTime, job1.ScheduledTime);
+        Assert.Equal("TestJob", job1.Name);
+        Assert.Equal(scheduledTime, job1.ScheduledAt);
         var job2 = await grain.ScheduleJobAsync("TestJob2", scheduledTime);
         var job3 = await grain.ScheduleJobAsync("TestJob3", scheduledTime.AddSeconds(2));
         var job4 = await grain.ScheduleJobAsync("TestJob4", scheduledTime);
         var job5 = await grain.ScheduleJobAsync("TestJob5", scheduledTime.AddSeconds(1));
         // Wait for the job to run
         await Task.Delay(TimeSpan.FromSeconds(10));
-        Assert.True(await grain.HasJobRan(job1.JobId), "The scheduled job did not run as expected.");
-        Assert.True(await grain.HasJobRan(job2.JobId), "The scheduled job did not run as expected.");
-        Assert.True(await grain.HasJobRan(job3.JobId), "The scheduled job did not run as expected.");
-        Assert.True(await grain.HasJobRan(job4.JobId), "The scheduled job did not run as expected.");
-        Assert.True(await grain.HasJobRan(job5.JobId), "The scheduled job did not run as expected.");
+        Assert.True(await grain.HasJobRan(job1.Id), "The scheduled job did not run as expected.");
+        Assert.True(await grain.HasJobRan(job2.Id), "The scheduled job did not run as expected.");
+        Assert.True(await grain.HasJobRan(job3.Id), "The scheduled job did not run as expected.");
+        Assert.True(await grain.HasJobRan(job4.Id), "The scheduled job did not run as expected.");
+        Assert.True(await grain.HasJobRan(job5.Id), "The scheduled job did not run as expected.");
     }
 }

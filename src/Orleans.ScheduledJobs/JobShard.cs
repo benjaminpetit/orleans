@@ -2,92 +2,168 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Orleans.Runtime;
+using Orleans.Runtime.Utilities;
 
 namespace Orleans.ScheduledJobs;
 
-[GenerateSerializer]
-internal abstract class JobShard
+public abstract class JobShard
 {
-    [Id(0)]
-    public string ShardId { get; protected set; }
+    public string Id { get; protected set; }
 
-    [Id(1)]
-    public DateTime NextScheduledTime { get; protected set; }
+    public DateTime StartTime { get; protected set; }
 
-    [Id(2)]
-    public DateTime MaxScheduledTime { get; protected set; }
+    public DateTime EndTime { get; protected set; }
 
-    [Id(3)]
-    public int JobCount { get; protected set; }
+    public abstract int JobCount { get; }
 
-    public abstract Task<IScheduledJob> ScheduleJobAsync(IGrainBase grain, string jobName, DateTime scheduledTime);
+    protected JobShard(string id, DateTime startTime, DateTime endTime)
+    {
+        Id = id;
+        StartTime = startTime;
+        EndTime = endTime;
+    }
 
-    public abstract ValueTask<IScheduledJob> GetNextJobAsync();
+    public abstract Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt);
+
+    public abstract IAsyncEnumerable<IScheduledJob> ReadJobsAsync();
 
     public abstract Task RemoveJobAsync(string jobId);
 }
 
-[DebuggerDisplay("ShardId={ShardId}, NextScheduledTime={NextScheduledTime}, MaxScheduledTime={MaxScheduledTime}, JobCount={JobCount}")]
+[DebuggerDisplay("ShardId={Id}, StartTime={StartTime}, EndTime={EndTime}, JobCount={JobCount}")]
 internal class InMemoryJobShard : JobShard
 {
-    private readonly SortedSet<ScheduledJob> _jobs = new(new ScheduledJobComparer());
+    private readonly ScheduledJobQueue _jobQueue;
+
+    public override int JobCount => _jobQueue.Count;
 
     public InMemoryJobShard(string shardId, DateTime minDueTime)
+        : base(shardId, minDueTime, minDueTime.AddHours(1))
     {
-        ShardId = shardId;
-        NextScheduledTime = minDueTime;
-        MaxScheduledTime = minDueTime.AddHours(1); // Example: each shard handles jobs for 1 hour
-        JobCount = 0;
+        _jobQueue = new ScheduledJobQueue(EndTime - DateTime.UtcNow);
     }
 
-    public override Task<IScheduledJob> ScheduleJobAsync(IGrainBase grain, string jobName, DateTime scheduledTime)
+    public override Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt)
     {
-        if (scheduledTime < NextScheduledTime || scheduledTime > MaxScheduledTime)
-            throw new ArgumentOutOfRangeException(nameof(scheduledTime), "Scheduled time is out of shard bounds.");
+        if (scheduledAt < StartTime || scheduledAt > EndTime)
+            throw new ArgumentOutOfRangeException(nameof(scheduledAt), "Scheduled time is out of shard bounds.");
+
         var job = new ScheduledJob
         {
-            JobId = Guid.NewGuid().ToString(),
-            TargetGrainId = grain.GrainContext.GrainId,
-            JobName = jobName,
-            ScheduledTime = scheduledTime
+            Id = Guid.NewGuid().ToString(),
+            TargetGrainId = target,
+            Name = jobName,
+            ScheduledAt = scheduledAt
         };
-        _jobs.Add(job);
-        JobCount++;
+        _jobQueue.Enqueue(job);
         return Task.FromResult((IScheduledJob)job);
     }
 
-    public override ValueTask<IScheduledJob> GetNextJobAsync()
+    public override IAsyncEnumerable<IScheduledJob> ReadJobsAsync()
     {
-        if (_jobs.Count == 0) return ValueTask.FromResult<IScheduledJob>(null);
-        var nextJob = _jobs.Min;
-        _jobs.Remove(nextJob);
-        JobCount--;
-        return ValueTask.FromResult((IScheduledJob)nextJob);
+        return _jobQueue; 
     }
 
     public override Task RemoveJobAsync(string jobId)
     {
-        var jobToRemove = _jobs.FirstOrDefault(j => j.JobId == jobId);
-        if (jobToRemove != null)
-        {
-            _jobs.Remove(jobToRemove);
-            JobCount--;
-        }
+        // In a real implementation, you would need to implement a way to remove a job from the queue.
         return Task.CompletedTask;
     }
+}
 
-    private class ScheduledJobComparer : IComparer<ScheduledJob>
+public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
+{
+    private readonly PriorityQueue<ScheduledJob, DateTime> _queue = new();
+    private TaskCompletionSource<bool> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly object _syncLock = new();
+    private bool _isFrozen = false;
+    private readonly Timer _freezeTimer;
+
+    public int Count => _queue.Count;
+
+    public ScheduledJobQueue(TimeSpan timeout)
     {
-        public int Compare(ScheduledJob x, ScheduledJob y)
+        _freezeTimer = new Timer(_ => Freeze(), null, timeout, Timeout.InfiniteTimeSpan);
+    }
+
+    public void Enqueue(ScheduledJob job)
+    {
+        lock (_syncLock)
         {
-            var dateCompare = x.ScheduledTime.CompareTo(y.ScheduledTime);
+            if (_isFrozen)
+                throw new InvalidOperationException("Cannot enqueue job to a frozen queue.");
 
-            if (dateCompare != 0)
-                return dateCompare;
+            _queue.Enqueue(job, job.ScheduledAt);
+            _tcs.TrySetResult(true);
+        }
+    }
 
-            return string.Compare(x.JobId, y.JobId, StringComparison.Ordinal);
+    public void Freeze()
+    {
+        lock (_syncLock)
+        {
+            _freezeTimer.Dispose();
+            _isFrozen = true;
+            _tcs.TrySetResult(true);
+        }
+    }
+
+    public async IAsyncEnumerator<ScheduledJob> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            DateTime nextTime;
+            ScheduledJob? nextJob;
+            TaskCompletionSource<bool> currentTcs;
+
+            lock (_syncLock)
+            {
+                if (_queue.Count == 0)
+                {
+                    if (_isFrozen)
+                        yield break; // Exit if the queue is frozen and empty
+
+                    // No jobs in the queue, reset the TCS and wait for a new job
+                    currentTcs = _tcs;
+                    _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    nextJob = null;
+                    nextTime = DateTime.MinValue;
+                }
+                else
+                {
+                    // Get the next job's scheduled time
+                    nextJob = _queue.Peek();
+                    nextTime = nextJob.ScheduledAt;
+                    currentTcs = _tcs;
+
+                    if (nextTime <= DateTime.UtcNow)
+                    {
+                        // It's time to process the next job
+                        yield return _queue.Dequeue();
+                        continue; // Immediately check for the next job
+                    }
+                }
+            }
+
+            if (nextJob == null)
+            {
+                // Wait until a new job is enqueued
+                await currentTcs.Task.WaitAsync(cancellationToken);
+            }
+            else
+            {
+                // Wait until the next job's scheduled time or a new job is enqueued
+                var now = DateTime.UtcNow;
+                if (nextTime > now)
+                {
+                    var delayTask = Task.Delay(nextTime - now, cancellationToken);
+                    var signalTask = currentTcs.Task;
+                    await Task.WhenAny(delayTask, signalTask);
+                }
+            }
         }
     }
 }
