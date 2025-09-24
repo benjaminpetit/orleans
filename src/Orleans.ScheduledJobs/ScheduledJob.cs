@@ -9,11 +9,12 @@ public interface IScheduledJob
     string Name { get; init; }
     DateTime ScheduledAt { get; init; }
     GrainId TargetGrainId { get; init; }
+    string ShardId { get; init; }
 }
 
 [GenerateSerializer]
 [Alias("Orleans.ScheduledJobs.ScheduledJob")]
-public class ScheduledJob : IScheduledJob
+internal class ScheduledJob : IScheduledJob
 {
     [Id(0)]
     public required string Id { get; init; }
@@ -23,4 +24,6 @@ public class ScheduledJob : IScheduledJob
     public DateTime ScheduledAt { get; init; }
     [Id(3)]
     public GrainId TargetGrainId { get; init; }
+    [Id(4)]
+    public required string ShardId { get; init; }
 }

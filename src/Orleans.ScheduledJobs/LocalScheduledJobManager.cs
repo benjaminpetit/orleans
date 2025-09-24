@@ -12,6 +12,8 @@ namespace Orleans.ScheduledJobs;
 public interface ILocalScheduledJobManager
 {
     Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt);
+
+    Task<bool> TryCancelScheduledJobAsync(IScheduledJob job);
 }
 
 internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManager, ILifecycleParticipant<ISiloLifecycle>
@@ -127,5 +129,11 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
     {
         var shard = await _shardManager.RegisterShard(this.Silo, shardKey);
         return shard;
+    }
+
+    public Task<bool> TryCancelScheduledJobAsync(IScheduledJob job)
+    {
+        // TODO: Implement job cancellation
+        return Task.FromResult(false);
     }
 }
