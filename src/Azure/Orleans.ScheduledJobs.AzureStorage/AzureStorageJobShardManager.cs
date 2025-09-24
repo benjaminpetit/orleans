@@ -10,45 +10,42 @@ using Orleans.Runtime;
 
 namespace Orleans.ScheduledJobs.AzureStorage;
 
-public class AzureStorageJobShardOptions
+public sealed class AzureStorageJobShardManager : JobShardManager
 {
-    /// <summary>
-    /// The maximum duration of a job shard.
-    /// </summary>
-    public TimeSpan MaxShardDuration { get; set; } = TimeSpan.FromHours(1);
-
-    /// <summary>
-    /// Gets or sets the <see cref="BlobContainerClient"/> instance used to store job shards.
-    /// </summary>
-    public BlobContainerClient BlobContainerClient { get; set; } = null!;
-}
-
-internal sealed class AzureStorageJobShardManager : JobShardManager
-{
-    private readonly BlobContainerClient _client;
+    private readonly BlobServiceClient _blobServiceClient;
+    private readonly string _containerName;
+    private BlobContainerClient _client = null!;
     private readonly TimeSpan _maxShardDuration;
     private readonly IClusterMembershipService _clusterMembership;
 
-    public AzureStorageJobShardManager(BlobContainerClient client, TimeSpan maxShardDuration, IClusterMembershipService clusterMembership)
+    public AzureStorageJobShardManager(BlobServiceClient client, string containerName, TimeSpan maxShardDuration, IClusterMembershipService clusterMembership)
     {
-        _client = client;
+        _blobServiceClient = client;
+        _containerName = containerName;
         _maxShardDuration = maxShardDuration;
         _clusterMembership = clusterMembership;
     }
 
     public AzureStorageJobShardManager(IOptions<AzureStorageJobShardOptions> options, IClusterMembershipService clusterMembership)
-        : this(options.Value.BlobContainerClient, options.Value.MaxShardDuration, clusterMembership)
+        : this(options.Value.BlobServiceClient, options.Value.ContainerName, options.Value.MaxShardDuration, clusterMembership)
     {
     }
 
     public override async Task<List<JobShard>> GetJobShardsAsync(SiloAddress siloAddress, DateTime maxDateTime)
     {
-        var blobs = _client.GetBlobsAsync(prefix: $"${maxDateTime:yyyyMMddHHmm}", traits: BlobTraits.Tags);
+        await InitializeIfNeeded();
+        var blobs = _client.GetBlobsAsync(traits: BlobTraits.Metadata);
         var result = new List<JobShard>();
         await foreach (var blob in blobs)
         {
             // Get the owner of the shard
             var (owner, minDueTime, maxDueTime) = ParseMetadata(blob.Metadata);
+
+            if (minDueTime > maxDateTime)
+            {
+                // This shard is too new, stop there
+                break;
+            }
 
             if (owner == null || _clusterMembership.CurrentSnapshot.GetSiloStatus(owner) == SiloStatus.Dead)
             {
@@ -73,15 +70,21 @@ internal sealed class AzureStorageJobShardManager : JobShardManager
 
     public override async Task<JobShard> RegisterShard(SiloAddress siloAddress, DateTime minDueTime)
     {
+        await InitializeIfNeeded();
         for (var i = 0;; i++) // TODO limit the number of attempts
         {
-            var shardId = $"{minDueTime:yyyyMMddHHmm}-{siloAddress}-{i}";
+            var shardId = $"{minDueTime:yyyyMMddHHmm}-{siloAddress.ToParsableString()}-{i}";
             var blobClient = _client.GetAppendBlobClient(shardId);
             var maxDueTime = minDueTime.Add(_maxShardDuration); 
             var metadata = CreateMetadata(siloAddress, minDueTime, maxDueTime);
             try
             {
-                await blobClient.CreateAsync(metadata: metadata);
+                var response = await blobClient.CreateIfNotExistsAsync(metadata: metadata);
+                if (response == null)
+                {
+                    // Blob already exists, try again with a different name
+                    continue;
+                }
             }
             catch (RequestFailedException)
             {
@@ -91,6 +94,15 @@ internal sealed class AzureStorageJobShardManager : JobShardManager
             }
             return new AzureStorageJobShard(shardId, minDueTime, maxDueTime, blobClient, true);
         }
+    }
+
+    private ValueTask InitializeIfNeeded()
+    {
+        if (_client != null) return ValueTask.CompletedTask;
+
+        _client = _blobServiceClient.GetBlobContainerClient(_containerName);
+        _client.CreateIfNotExists();
+        return ValueTask.CompletedTask;
     }
 
     private static Dictionary<string, string> CreateMetadata(SiloAddress siloAddress, DateTime minDueTime, DateTime maxDueTime)
@@ -108,6 +120,6 @@ internal sealed class AzureStorageJobShardManager : JobShardManager
         var owner = metadata.TryGetValue("Owner", out var ownerStr) ? SiloAddress.FromParsableString(ownerStr) : null;
         var minDueTime = metadata.TryGetValue("MinDueTime", out var minDueTimeStr) && DateTime.TryParse(minDueTimeStr, out var minDt) ? minDt : DateTime.MinValue;
         var maxDueTime = metadata.TryGetValue("MaxDueTime", out var maxDueTimeStr) && DateTime.TryParse(maxDueTimeStr, out var maxDt) ? maxDt : DateTime.MaxValue;
-        return (owner, minDueTime, maxDueTime);
+        return (owner, minDueTime.ToUniversalTime(), maxDueTime.ToUniversalTime());
     }
 }
