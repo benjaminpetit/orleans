@@ -67,9 +67,15 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
 
     private Task Start(CancellationToken ct)
     {
-        this.QueueTask(async () =>
+        this.QueueTask(WatchForShardsAsync);
+        return Task.CompletedTask;
+    }
+
+    private async Task WatchForShardsAsync()
+    {
+        try
         {
-            while (!_cts.Token.IsCancellationRequested)
+            while (!_cts.IsCancellationRequested)
             {
                 var shards = await _shardManager.GetJobShardsAsync(this.Silo, DateTime.UtcNow.AddHours(1));
                 if (shards.Count > 0)
@@ -79,10 +85,13 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
                         RunShard(shard).Ignore(); // TODO: keep track of running shards
                     }
                 }
-                await Task.Delay(TimeSpan.FromMinutes(1), ct);
+                await Task.Delay(TimeSpan.FromMinutes(1), _cts.Token);
             }
-        });
-        return Task.CompletedTask;
+        }
+        catch (TaskCanceledException)
+        {
+            // Ignore, shutting down
+        }
     }
 
     private async Task RunShard(JobShard shard)
