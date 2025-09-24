@@ -62,7 +62,9 @@ public sealed class AzureStorageJobShardManager : JobShardManager
                     // Someone else took over the shard
                     continue;
                 }
-                result.Add(new AzureStorageJobShard(blob.Name, minDueTime, maxDueTime, blobClient, false));
+                var shard = new AzureStorageJobShard(blob.Name, minDueTime, maxDueTime, blobClient, false);
+                await shard.InitializeAsync();
+                result.Add(shard);
             }
         }
         return result;
@@ -92,7 +94,9 @@ public sealed class AzureStorageJobShardManager : JobShardManager
                 // Blob already exists, try again with a different name
                 continue;
             }
-            return new AzureStorageJobShard(shardId, minDueTime, maxDueTime, blobClient, true);
+            var shard = new AzureStorageJobShard(shardId, minDueTime, maxDueTime, blobClient, true);
+            await shard.InitializeAsync();
+            return shard;
         }
     }
 
