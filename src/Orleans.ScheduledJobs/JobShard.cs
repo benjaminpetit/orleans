@@ -131,8 +131,8 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
                         yield break; // Exit if the queue is frozen and empty
 
                     // No jobs in the queue, reset the TCS and wait for a new job
-                    currentTcs = _tcs;
                     _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    currentTcs = _tcs;
                     nextJob = null;
                     nextTime = DateTime.MinValue;
                 }

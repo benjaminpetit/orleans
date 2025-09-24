@@ -25,7 +25,7 @@ internal sealed class AzureStorageJobShard : JobShard
         _isWriteable = isWriteable;
         if (isWriteable)
         {
-            _jobQueue = new ScheduledJobQueue(EndTime - DateTime.UtcNow + TimeSpan.FromMinutes(1));
+            _jobQueue = new ScheduledJobQueue(EndTime - DateTime.UtcNow + TimeSpan.FromSeconds(5));
         }
         else
         {
