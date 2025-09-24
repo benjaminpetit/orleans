@@ -116,8 +116,6 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
                 Console.WriteLine($"Error executing job {job.Id}: {ex}");
             }
         }
-        // After all jobs are processed, delete the shard
-        await _shardManager.DeleteShard(shard.Id);
     }
 
     private DateTime GetShardKey(DateTime scheduledTime)

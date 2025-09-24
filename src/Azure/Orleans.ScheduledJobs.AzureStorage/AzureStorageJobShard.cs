@@ -14,13 +14,23 @@ namespace Orleans.ScheduledJobs.AzureStorage;
 internal sealed class AzureStorageJobShard : JobShard
 {
     private readonly AppendBlobClient _blobClient;
-    private readonly ScheduledJobQueue _jobQueue = new ();
+    private readonly bool _isWriteable;
+    private ScheduledJobQueue _jobQueue;
     private ETag? _etag;
 
-    public AzureStorageJobShard(string id, DateTime startTime, DateTime endTime, AppendBlobClient blobClient)
+    public AzureStorageJobShard(string id, DateTime startTime, DateTime endTime, AppendBlobClient blobClient, bool isWriteable)
         : base(id, startTime, endTime)
     {
         _blobClient = blobClient;
+        _isWriteable = isWriteable;
+        if (isWriteable)
+        {
+            _jobQueue = new ScheduledJobQueue(EndTime - DateTime.UtcNow + TimeSpan.FromMinutes(1));
+        }
+        else
+        {
+            _jobQueue = new ScheduledJobQueue();
+        }
     }
 
     public override async ValueTask<int> GetJobCount()
@@ -69,52 +79,46 @@ internal sealed class AzureStorageJobShard : JobShard
     {
         if (_etag is not null) return; // already initialized
 
-        if (!await _blobClient.ExistsAsync())
+        // Load existing blob
+        var response = await _blobClient.DownloadAsync();
+        using var stream = response.Value.Content;
+        using var reader = new StreamReader(stream);
+
+        // Rebuild state by replaying operations
+        var dictionary = new Dictionary<string, JobOperation>();
+        while (!reader.EndOfStream)
         {
-            // Create new blob
-            var response = await _blobClient.CreateIfNotExistsAsync();
-            _etag = response.Value.ETag;
-            return;
+            var line = await reader.ReadLineAsync();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var operation = JsonSerializer.Deserialize<JobOperation>(line);
+            switch (operation.Type)
+            {
+                case JobOperation.OperationType.Add:
+                    dictionary[operation.Id] = operation;
+                    break;
+                case JobOperation.OperationType.Remove:
+                    dictionary.Remove(operation.Id);
+                    break;
+            }
         }
-        else
+        // Rebuild the priority queue
+        foreach (var op in dictionary.Values)
         {
-            // Load existing blob
-            var response = await _blobClient.DownloadAsync();
-            using var stream = response.Value.Content;
-            using var reader = new StreamReader(stream);
+            _jobQueue.Enqueue(new ScheduledJob
+            {
+                Id = op.Id,
+                Name = op.Name!,
+                ScheduledAt = op.ScheduledAt!.Value,
+                TargetGrainId = op.TargetGrainId!.Value,
+                ShardId = Id
+            });
+        }
 
-            // Rebuild state by replaying operations
-            var dictionary = new Dictionary<string, JobOperation>();
-            while (!reader.EndOfStream)
-            {
-                var line = await reader.ReadLineAsync();
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                var operation = JsonSerializer.Deserialize<JobOperation>(line);
-                switch (operation.Type)
-                {
-                    case JobOperation.OperationType.Add:
-                        dictionary[operation.Id] = operation;
-                        break;
-                    case JobOperation.OperationType.Remove:
-                        dictionary.Remove(operation.Id);
-                        break;
-                }
-            }
-            // Rebuild the priority queue
-            foreach (var op in dictionary.Values)
-            {
-                _jobQueue.Enqueue(new ScheduledJob
-                {
-                    Id = op.Id,
-                    Name = op.Name!,
-                    ScheduledAt = op.ScheduledAt!.Value,
-                    TargetGrainId = op.TargetGrainId!.Value,
-                    ShardId = Id
-                });
-            }
+        _etag = response.Value.Details.ETag;
+
+        if (!_isWriteable)
+        {
             _jobQueue.Freeze();
-
-            _etag = response.Value.Details.ETag;
         }
     }
 }

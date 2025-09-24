@@ -5,13 +5,11 @@ using Orleans.Runtime;
 
 namespace Orleans.ScheduledJobs;
 
-internal abstract class JobShardManager
+public abstract class JobShardManager
 {
     public abstract Task<List<JobShard>> GetJobShardsAsync(SiloAddress siloAddress, DateTime maxDueTime);
 
     public abstract Task<JobShard> RegisterShard(SiloAddress siloAddress, DateTime minDueTime);
-
-    public abstract Task DeleteShard(string shardId);
 }
 
 internal class InMemoryJobShardManager : JobShardManager
@@ -47,20 +45,5 @@ internal class InMemoryJobShardManager : JobShardManager
         var newShard = new InMemoryJobShard(shardId, minDueTime);
         _shardStore[key].Add(newShard);
         return Task.FromResult((JobShard)newShard);
-    }
-
-    public override Task DeleteShard(string shardId)
-    {
-        foreach (var key in _shardStore.Keys)
-        {
-            var shards = _shardStore[key];
-            var shardToRemove = shards.Find(s => s.Id == shardId);
-            if (shardToRemove != null)
-            {
-                shards.Remove(shardToRemove);
-                break;
-            }
-        }
-        return Task.CompletedTask;
     }
 }
