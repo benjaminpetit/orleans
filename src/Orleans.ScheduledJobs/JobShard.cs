@@ -78,7 +78,7 @@ internal class InMemoryJobShard : JobShard
 public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
 {
     private readonly PriorityQueue<ScheduledJob, DateTime> _queue = new();
-    private TaskCompletionSource<bool> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    //private TaskCompletionSource<bool> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _syncLock = new();
     private bool _isFrozen = false;
     private readonly Timer? _freezeTimer;
@@ -101,7 +101,7 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
                 throw new InvalidOperationException("Cannot enqueue job to a frozen queue.");
 
             _queue.Enqueue(job, job.ScheduledAt);
-            _tcs.TrySetResult(true);
+            //_tcs.TrySetResult(true);
         }
     }
 
@@ -111,63 +111,85 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
         {
             _freezeTimer?.Dispose();
             _isFrozen = true;
-            _tcs.TrySetResult(true);
+            //_tcs.TrySetResult(true);
         }
     }
 
     public async IAsyncEnumerator<ScheduledJob> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
+        var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         while (true)
         {
-            DateTime nextTime;
-            ScheduledJob? nextJob;
-            TaskCompletionSource<bool> currentTcs;
-
             lock (_syncLock)
             {
                 if (_queue.Count == 0)
                 {
                     if (_isFrozen)
                         yield break; // Exit if the queue is frozen and empty
-
-                    // No jobs in the queue, reset the TCS and wait for a new job
-                    _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                    currentTcs = _tcs;
-                    nextJob = null;
-                    nextTime = DateTime.MinValue;
                 }
                 else
                 {
-                    // Get the next job's scheduled time
-                    nextJob = _queue.Peek();
-                    nextTime = nextJob.ScheduledAt;
-                    currentTcs = _tcs;
-
-                    if (nextTime <= DateTime.UtcNow)
+                    var nextJob = _queue.Peek();
+                    if (nextJob.ScheduledAt <= DateTime.UtcNow)
                     {
-                        // It's time to process the next job
                         yield return _queue.Dequeue();
                         continue; // Immediately check for the next job
                     }
                 }
             }
-
-            if (nextJob == null)
-            {
-                // Wait until a new job is enqueued
-                await currentTcs.Task.WaitAsync(cancellationToken);
-            }
-            else
-            {
-                // Wait until the next job's scheduled time or a new job is enqueued
-                var now = DateTime.UtcNow;
-                if (nextTime > now)
-                {
-                    var delayTask = Task.Delay(nextTime - now, cancellationToken);
-                    var signalTask = currentTcs.Task;
-                    await Task.WhenAny(delayTask, signalTask);
-                }
-            }
+            await timer.WaitForNextTickAsync(cancellationToken);
         }
+        //while (true)
+        //{
+        //    DateTime nextTime;
+        //    ScheduledJob? nextJob;
+        //    TaskCompletionSource<bool> currentTcs;
+
+        //    lock (_syncLock)
+        //    {
+        //        if (_queue.Count == 0)
+        //        {
+        //            if (_isFrozen)
+        //                yield break; // Exit if the queue is frozen and empty
+
+        //            // No jobs in the queue, reset the TCS and wait for a new job
+        //            _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        //            currentTcs = _tcs;
+        //            nextJob = null;
+        //            nextTime = DateTime.MinValue;
+        //        }
+        //        else
+        //        {
+        //            // Get the next job's scheduled time
+        //            nextJob = _queue.Peek();
+        //            nextTime = nextJob.ScheduledAt;
+        //            currentTcs = _tcs;
+
+        //            if (nextTime <= DateTime.UtcNow)
+        //            {
+        //                // It's time to process the next job
+        //                yield return _queue.Dequeue();
+        //                continue; // Immediately check for the next job
+        //            }
+        //        }
+        //    }
+
+        //    if (nextJob == null)
+        //    {
+        //        // Wait until a new job is enqueued
+        //        await currentTcs.Task.WaitAsync(cancellationToken);
+        //    }
+        //    else
+        //    {
+        //        // Wait until the next job's scheduled time or a new job is enqueued
+        //        var now = DateTime.UtcNow;
+        //        if (nextTime > now)
+        //        {
+        //            var delayTask = Task.Delay(nextTime - now, cancellationToken);
+        //            var signalTask = currentTcs.Task;
+        //            await Task.WhenAny(delayTask, signalTask);
+        //        }
+        //    }
+        //}
     }
 }

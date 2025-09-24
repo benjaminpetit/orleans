@@ -98,23 +98,37 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
 
     private async Task RunShard(JobShard shard)
     {
-        // Process all jobs in the shard
-        await foreach (var job in shard.ReadJobsAsync().WithCancellation(_cts.Token))
+        try
         {
-            try
+            if (shard.StartTime > DateTime.UtcNow)
             {
-                // TODO: Do it in parallel, with concurrency limit
-                var target = this.RuntimeClient.InternalGrainFactory
-                    .GetGrain(job.TargetGrainId)
-                    .AsReference<IScheduledJobReceiver>();
-                await target.ReceiveScheduledJobAsync(job);
-                await shard.RemoveJobAsync(job.Id);
+                // Wait until the shard's start time
+                var delay = shard.StartTime - DateTime.UtcNow;
+                await Task.Delay(delay, _cts.Token);
             }
-            catch (Exception ex)
+
+            // Process all jobs in the shard
+            await foreach (var job in shard.ReadJobsAsync().WithCancellation(_cts.Token))
             {
-                // TODO Log the exception
-                Console.WriteLine($"Error executing job {job.Id}: {ex}");
+                try
+                {
+                    // TODO: Do it in parallel, with concurrency limit
+                    var target = this.RuntimeClient.InternalGrainFactory
+                        .GetGrain(job.TargetGrainId)
+                        .AsReference<IScheduledJobReceiver>();
+                    await target.ReceiveScheduledJobAsync(job);
+                    await shard.RemoveJobAsync(job.Id);
+                }
+                catch (Exception ex)
+                {
+                    // TODO Log the exception
+                    Console.WriteLine($"Error executing job {job.Id}: {ex}");
+                }
             }
+        }
+        catch (TaskCanceledException)
+        {
+            // Ignore, shutting down
         }
     }
 
