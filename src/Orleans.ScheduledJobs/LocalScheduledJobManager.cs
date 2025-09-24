@@ -38,7 +38,7 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
         // Find a shard that can accept this job
         foreach (var shard in shards)
         {
-            if (shard.StartTime <= scheduledAt && shard.EndTime >= scheduledAt && shard.JobCount <= MaxJobCountPerShard)
+            if (shard.StartTime <= scheduledAt && shard.EndTime >= scheduledAt && await shard.GetJobCount() <= MaxJobCountPerShard)
             {
                 return await shard.ScheduleJobAsync(target, jobName, scheduledAt);
             }

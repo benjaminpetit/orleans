@@ -17,7 +17,7 @@ public abstract class JobShard
 
     public DateTime EndTime { get; protected set; }
 
-    public abstract int JobCount { get; }
+    public abstract ValueTask<int> GetJobCount();
 
     protected JobShard(string id, DateTime startTime, DateTime endTime)
     {
@@ -38,8 +38,6 @@ internal class InMemoryJobShard : JobShard
 {
     private readonly ScheduledJobQueue _jobQueue;
 
-    public override int JobCount => _jobQueue.Count;
-
     public InMemoryJobShard(string shardId, DateTime minDueTime)
         : base(shardId, minDueTime, minDueTime.AddHours(1))
     {
@@ -56,7 +54,8 @@ internal class InMemoryJobShard : JobShard
             Id = Guid.NewGuid().ToString(),
             TargetGrainId = target,
             Name = jobName,
-            ScheduledAt = scheduledAt
+            ScheduledAt = scheduledAt,
+            ShardId = Id
         };
         _jobQueue.Enqueue(job);
         return Task.FromResult((IScheduledJob)job);
@@ -72,6 +71,8 @@ internal class InMemoryJobShard : JobShard
         // In a real implementation, you would need to implement a way to remove a job from the queue.
         return Task.CompletedTask;
     }
+
+    public override ValueTask<int> GetJobCount() => ValueTask.FromResult(_jobQueue.Count);
 }
 
 public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
@@ -80,13 +81,16 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
     private TaskCompletionSource<bool> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _syncLock = new();
     private bool _isFrozen = false;
-    private readonly Timer _freezeTimer;
+    private readonly Timer? _freezeTimer;
 
     public int Count => _queue.Count;
 
-    public ScheduledJobQueue(TimeSpan timeout)
+    public ScheduledJobQueue(TimeSpan? timeout = default)
     {
-        _freezeTimer = new Timer(_ => Freeze(), null, timeout, Timeout.InfiniteTimeSpan);
+        if (timeout.HasValue)
+        {
+            _freezeTimer = new Timer(_ => Freeze(), null, timeout.Value, Timeout.InfiniteTimeSpan);
+        }
     }
 
     public void Enqueue(ScheduledJob job)
@@ -105,7 +109,7 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
     {
         lock (_syncLock)
         {
-            _freezeTimer.Dispose();
+            _freezeTimer?.Dispose();
             _isFrozen = true;
             _tcs.TrySetResult(true);
         }

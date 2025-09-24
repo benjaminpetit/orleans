@@ -14,7 +14,7 @@ public interface IScheduledJob
 
 [GenerateSerializer]
 [Alias("Orleans.ScheduledJobs.ScheduledJob")]
-internal class ScheduledJob : IScheduledJob
+public class ScheduledJob : IScheduledJob
 {
     [Id(0)]
     public required string Id { get; init; }
