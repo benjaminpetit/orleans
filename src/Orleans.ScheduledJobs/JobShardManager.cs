@@ -10,6 +10,8 @@ public abstract class JobShardManager
     public abstract Task<List<JobShard>> GetJobShardsAsync(SiloAddress siloAddress, DateTime maxDueTime);
 
     public abstract Task<JobShard> RegisterShard(SiloAddress siloAddress, DateTime minDueTime);
+
+    public abstract Task UnregisterShard(SiloAddress siloAddress, JobShard shard);
 }
 
 internal class InMemoryJobShardManager : JobShardManager
@@ -45,5 +47,15 @@ internal class InMemoryJobShardManager : JobShardManager
         var newShard = new InMemoryJobShard(shardId, minDueTime);
         _shardStore[key].Add(newShard);
         return Task.FromResult((JobShard)newShard);
+    }
+
+    public override Task UnregisterShard(SiloAddress siloAddress, JobShard shard)
+    {
+        var key = siloAddress.ToString();
+        if (_shardStore.TryGetValue(key, out var shards))
+        {
+            shards.RemoveAll(s => s.Id == shard.Id);
+        }
+        return Task.CompletedTask;
     }
 }

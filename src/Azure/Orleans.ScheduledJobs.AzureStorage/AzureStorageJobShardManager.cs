@@ -100,6 +100,31 @@ public sealed class AzureStorageJobShardManager : JobShardManager
         }
     }
 
+    public override async Task UnregisterShard(SiloAddress siloAddress, JobShard shard)
+    {
+        var azureShard = shard as AzureStorageJobShard ?? throw new ArgumentException("Shard is not an AzureStorageJobShard", nameof(shard));
+        var conditions = new BlobRequestConditions { IfMatch = azureShard.ETag };
+        var count = await shard.GetJobCount();
+        var properties = await azureShard.BlobClient.GetPropertiesAsync(conditions);
+        if (count > 0)
+        {
+            // There are still jobs in the shard, unregister it
+            var metadata = properties.Value.Metadata;
+            var (owner, _, _) = ParseMetadata(metadata);
+
+            if (owner != siloAddress)
+                throw new InvalidOperationException("Cannot unregister a shard owned by another silo");
+
+            metadata.Remove("Owner");
+            var response = await azureShard.BlobClient.SetMetadataAsync(metadata, conditions);
+        }
+        else
+        {
+            // No jobs left, we can delete the shard
+            await azureShard.BlobClient.DeleteIfExistsAsync(conditions: conditions);
+        }
+    }
+
     private ValueTask InitializeIfNeeded()
     {
         if (_client != null) return ValueTask.CompletedTask;

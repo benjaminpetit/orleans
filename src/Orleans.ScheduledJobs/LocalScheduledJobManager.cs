@@ -125,6 +125,8 @@ internal class LocalScheduledJobManager : SystemTarget, ILocalScheduledJobManage
                     Console.WriteLine($"Error executing job {job.Id}: {ex}");
                 }
             }
+            // Unregister the shard
+            await _shardManager.UnregisterShard(this.Silo, shard);
         }
         catch (TaskCanceledException)
         {

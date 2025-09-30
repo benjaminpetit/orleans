@@ -44,7 +44,7 @@ internal class InMemoryJobShard : JobShard
         _jobQueue = new ScheduledJobQueue(EndTime - DateTime.UtcNow);
     }
 
-    public override Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt)
+    public override async Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt)
     {
         if (scheduledAt < StartTime || scheduledAt > EndTime)
             throw new ArgumentOutOfRangeException(nameof(scheduledAt), "Scheduled time is out of shard bounds.");
@@ -57,8 +57,8 @@ internal class InMemoryJobShard : JobShard
             ScheduledAt = scheduledAt,
             ShardId = Id
         };
-        _jobQueue.Enqueue(job);
-        return Task.FromResult((IScheduledJob)job);
+        await _jobQueue.Enqueue(job);
+        return job;
     }
 
     public override IAsyncEnumerable<IScheduledJob> ReadJobsAsync()
@@ -82,6 +82,7 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
     private readonly object _syncLock = new();
     private bool _isFrozen = false;
     private readonly Timer? _freezeTimer;
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     public int Count => _queue.Count;
 
@@ -89,13 +90,14 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
     {
         if (timeout.HasValue)
         {
-            _freezeTimer = new Timer(_ => Freeze(), null, timeout.Value, Timeout.InfiniteTimeSpan);
+            _freezeTimer = new Timer(_ => Freeze().Ignore(), null, timeout.Value, Timeout.InfiniteTimeSpan);
         }
     }
 
-    public void Enqueue(ScheduledJob job)
+    public async Task Enqueue(ScheduledJob job)
     {
-        lock (_syncLock)
+        await _semaphore.WaitAsync();
+        try 
         {
             if (_isFrozen)
                 throw new InvalidOperationException("Cannot enqueue job to a frozen queue.");
@@ -103,15 +105,24 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
             _queue.Enqueue(job, job.ScheduledAt);
             //_tcs.TrySetResult(true);
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
-    public void Freeze()
+    public async Task Freeze()
     {
-        lock (_syncLock)
+        await _semaphore.WaitAsync();
+        try
         {
             _freezeTimer?.Dispose();
             _isFrozen = true;
             //_tcs.TrySetResult(true);
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
@@ -120,7 +131,9 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
         var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         while (true)
         {
-            lock (_syncLock)
+            //lock (_syncLock)
+            await _semaphore.WaitAsync();
+            try
             {
                 if (_queue.Count == 0)
                 {
@@ -137,7 +150,12 @@ public class ScheduledJobQueue : IAsyncEnumerable<ScheduledJob>
                     }
                 }
             }
+            finally
+            {
+                _semaphore.Release();
+            }
             await timer.WaitForNextTickAsync(cancellationToken);
+            //await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
         //while (true)
         //{

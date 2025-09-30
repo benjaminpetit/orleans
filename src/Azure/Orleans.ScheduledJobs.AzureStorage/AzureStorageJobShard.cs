@@ -13,15 +13,17 @@ namespace Orleans.ScheduledJobs.AzureStorage;
 
 internal sealed class AzureStorageJobShard : JobShard
 {
-    private readonly AppendBlobClient _blobClient;
+    internal AppendBlobClient BlobClient { get; init; }
+    internal ETag? ETag { get; private set; }
+
     private readonly bool _isWriteable;
     private ScheduledJobQueue _jobQueue;
-    private ETag? _etag;
+    private int _jobCount = 0;
 
     public AzureStorageJobShard(string id, DateTime startTime, DateTime endTime, AppendBlobClient blobClient, bool isWriteable)
         : base(id, startTime, endTime)
     {
-        _blobClient = blobClient;
+        BlobClient = blobClient;
         _isWriteable = isWriteable;
         if (isWriteable)
         {
@@ -35,7 +37,7 @@ internal sealed class AzureStorageJobShard : JobShard
 
     public override ValueTask<int> GetJobCount()
     {
-        return ValueTask.FromResult(_jobQueue.Count);
+        return ValueTask.FromResult(_jobCount);
     }
 
     public override IAsyncEnumerable<IScheduledJob> ReadJobsAsync()
@@ -47,6 +49,7 @@ internal sealed class AzureStorageJobShard : JobShard
     {
         var operation = JobOperation.CreateRemoveOperation(jobId);
         await AppendOperation(operation);
+        _jobCount--;
     }
 
     public override async Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt)
@@ -54,7 +57,8 @@ internal sealed class AzureStorageJobShard : JobShard
         var jobId = Guid.NewGuid().ToString();
         var operation = JobOperation.CreateAddOperation(jobId, jobName, scheduledAt, target);
         await AppendOperation(operation);
-        return new ScheduledJob
+        _jobCount++;
+        var job = new ScheduledJob
         {
             Id = jobId,
             Name = jobName,
@@ -62,24 +66,26 @@ internal sealed class AzureStorageJobShard : JobShard
             TargetGrainId = target,
             ShardId = Id
         };
+        await _jobQueue.Enqueue(job);
+        return job;
     }
 
     private async Task AppendOperation(JobOperation operation)
     {
         var content = BinaryData.FromObjectAsJson(operation).ToString() + Environment.NewLine;
         using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content));
-        var result = await _blobClient.AppendBlockAsync(
+        var result = await BlobClient.AppendBlockAsync(
                     stream,
-                    new AppendBlobAppendBlockOptions { Conditions = new AppendBlobRequestConditions { IfMatch = _etag } });
-        _etag = result.Value.ETag;
+                    new AppendBlobAppendBlockOptions { Conditions = new AppendBlobRequestConditions { IfMatch = ETag } });
+        ETag = result.Value.ETag;
     }
 
     public async ValueTask InitializeAsync()
     {
-        if (_etag is not null) return; // already initialized
+        if (ETag is not null) return; // already initialized
 
         // Load existing blob
-        var response = await _blobClient.DownloadAsync();
+        var response = await BlobClient.DownloadAsync();
         using var stream = response.Value.Content;
         using var reader = new StreamReader(stream);
 
@@ -103,7 +109,7 @@ internal sealed class AzureStorageJobShard : JobShard
         // Rebuild the priority queue
         foreach (var op in dictionary.Values)
         {
-            _jobQueue.Enqueue(new ScheduledJob
+            await _jobQueue.Enqueue(new ScheduledJob
             {
                 Id = op.Id,
                 Name = op.Name!,
@@ -112,12 +118,13 @@ internal sealed class AzureStorageJobShard : JobShard
                 ShardId = Id
             });
         }
+        _jobCount = dictionary.Count;
 
-        _etag = response.Value.Details.ETag;
+        ETag = response.Value.Details.ETag;
 
         if (!_isWriteable)
         {
-            _jobQueue.Freeze();
+            await _jobQueue.Freeze();
         }
     }
 }

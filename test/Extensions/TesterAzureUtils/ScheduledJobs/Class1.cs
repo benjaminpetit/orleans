@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Orleans.ScheduledJobs.AzureStorage;
 using Xunit;
@@ -97,8 +98,14 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
         await foreach (var job in shard1.ReadJobsAsync().WithCancellation(cts.Token))
         {
             Assert.Equal($"job{counter}", job.Name);
+            await shard1.RemoveJobAsync(job.Id);
             counter++;
         }
+        Assert.Equal(5, counter);
+        await manager.UnregisterShard(localAddress, shard1);
+
+        // No unassigned shards
+        Assert.Empty(await manager.GetJobShardsAsync(localAddress, DateTime.UtcNow.AddHours(1)));
     }
 
     [Fact, TestCategory("Azure"), TestCategory("Functional")]
@@ -129,22 +136,57 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
         await foreach (var job in shard1.ReadJobsAsync().WithCancellation(cts.Token))
         {
             Assert.Equal($"job{counter}", job.Name);
+            await shard1.RemoveJobAsync(job.Id);
             counter++;
         }
+        Assert.Equal(5, counter);
         Assert.True(shard1.EndTime <= DateTime.UtcNow);
+        await manager.UnregisterShard(localAddress, shard1);
+
+        // No unassigned shards
+        Assert.Empty(await manager.GetJobShardsAsync(localAddress, DateTime.UtcNow.AddHours(1)));
     }
 
-    //await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job2", DateTime.UtcNow.AddSeconds(10));
-    //await shard1.ScheduleJobAsync(GrainId.Create("type", "target2"), "job1", DateTime.UtcNow.AddSeconds(5));
-    //await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job3", DateTime.UtcNow.AddSeconds(15));
+    [Fact, TestCategory("Azure"), TestCategory("Functional")]
+    public async Task AzureStorageJobShardManager_StopProcessingShard()
+    {
+        var options = Options.Create(new AzureStorageJobShardOptions());
+        options.Value.ConfigureTestDefaults();
+        options.Value.MaxShardDuration = TimeSpan.FromSeconds(20);
+        options.Value.ContainerName = "jobshardmanager" + Guid.NewGuid();
 
-    //var counter = 1;
-    //await foreach (var job in shard1.ReadJobsAsync())
-    //{
-    //    Assert.Equal($"job{counter}", job.Name);
-    //    counter++;
-    //    if (counter > 3) break;
-    //}
+        var localAddress = SiloAddress.New(new IPEndPoint(IPAddress.Loopback, 5000), 0);
+        var membershipService = new InMemoryIlusterMembershipService();
+        var manager = new AzureStorageJobShardManager(options, membershipService);
+
+        membershipService.SetSiloStatus(localAddress, SiloStatus.Active);
+
+        var date = DateTime.UtcNow;
+        var shard1 = await manager.RegisterShard(localAddress, date);
+
+        // Schedule some jobs
+        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job1", DateTime.UtcNow.AddSeconds(5));
+        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job3", DateTime.UtcNow.AddSeconds(10));
+        await shard1.ScheduleJobAsync(GrainId.Create("type", "target2"), "job2", DateTime.UtcNow.AddSeconds(6));
+        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job4", DateTime.UtcNow.AddSeconds(15));
+
+        var counter = 1;
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        await foreach (var job in shard1.ReadJobsAsync().WithCancellation(cts.Token))
+        {
+            Assert.Equal($"job{counter}", job.Name);
+            if (counter == 2)
+                break;
+            await shard1.RemoveJobAsync(job.Id);
+            counter++;
+        }
+        Assert.Equal(2, counter);
+        await manager.UnregisterShard(localAddress, shard1);
+
+        var shards = await manager.GetJobShardsAsync(localAddress, DateTime.UtcNow.AddHours(1));
+        Assert.Single(shards);
+        Assert.Equal(shard1.Id, shards[0].Id);
+    }
 
     private class InMemoryIlusterMembershipService : IClusterMembershipService
     {
