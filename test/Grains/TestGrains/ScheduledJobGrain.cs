@@ -33,7 +33,7 @@ public class ScheduledJobGrain : Grain, IScheduledJobGrain, IScheduledJobReceive
         return Task.CompletedTask;
     }
 
-    public async Task<IScheduledJob> ScheduleJobAsync(string jobName, DateTime scheduledTime)
+    public async Task<IScheduledJob> ScheduleJobAsync(string jobName, DateTimeOffset scheduledTime)
     {
         var job = await _localScheduledJobManager.ScheduleJobAsync(this.GetGrainId(), jobName, scheduledTime);
         jobRunStatus[job.Id] = false;

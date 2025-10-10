@@ -9,7 +9,7 @@ namespace UnitTests.GrainInterfaces;
 
 public interface IScheduledJobGrain : IGrainWithStringKey
 {
-    Task<IScheduledJob> ScheduleJobAsync(string jobName, DateTime scheduledTime);
+    Task<IScheduledJob> ScheduleJobAsync(string jobName, DateTimeOffset scheduledTime);
 
     Task<bool> HasJobRan(string jobId);
 }

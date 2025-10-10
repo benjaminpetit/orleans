@@ -18,15 +18,15 @@ public class ScheduledJobTests : HostedTestClusterEnsureDefaultStarted
     public async Task Test_ScheduledJobGrain()
     {
         var grain = this.GrainFactory.GetGrain<UnitTests.GrainInterfaces.IScheduledJobGrain>("test-job-grain");
-        var scheduledTime = DateTime.UtcNow.AddSeconds(5);
-        var job1 = await grain.ScheduleJobAsync("TestJob", scheduledTime);
+        var dueTime = DateTimeOffset.Now.AddSeconds(5);
+        var job1 = await grain.ScheduleJobAsync("TestJob", dueTime);
         Assert.NotNull(job1);
         Assert.Equal("TestJob", job1.Name);
-        Assert.Equal(scheduledTime, job1.ScheduledAt);
-        var job2 = await grain.ScheduleJobAsync("TestJob2", scheduledTime);
-        var job3 = await grain.ScheduleJobAsync("TestJob3", scheduledTime.AddSeconds(2));
-        var job4 = await grain.ScheduleJobAsync("TestJob4", scheduledTime);
-        var job5 = await grain.ScheduleJobAsync("TestJob5", scheduledTime.AddSeconds(1));
+        Assert.Equal(dueTime, job1.DueTime);
+        var job2 = await grain.ScheduleJobAsync("TestJob2", dueTime);
+        var job3 = await grain.ScheduleJobAsync("TestJob3", dueTime.AddSeconds(2));
+        var job4 = await grain.ScheduleJobAsync("TestJob4", dueTime);
+        var job5 = await grain.ScheduleJobAsync("TestJob5", dueTime.AddSeconds(1));
         // Wait for the job to run
         await Task.Delay(TimeSpan.FromSeconds(10));
         Assert.True(await grain.HasJobRan(job1.Id), "The scheduled job did not run as expected.");

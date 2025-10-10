@@ -31,7 +31,7 @@ public sealed class AzureStorageJobShardManager : JobShardManager
     {
     }
 
-    public override async Task<List<JobShard>> GetJobShardsAsync(SiloAddress siloAddress, DateTime maxDateTime)
+    public override async Task<List<JobShard>> GetJobShardsAsync(SiloAddress siloAddress, DateTimeOffset maxDateTime)
     {
         await InitializeIfNeeded();
         var blobs = _client.GetBlobsAsync(traits: BlobTraits.Metadata);
@@ -62,26 +62,26 @@ public sealed class AzureStorageJobShardManager : JobShardManager
                     // Someone else took over the shard
                     continue;
                 }
-                var shard = new AzureStorageJobShard(blob.Name, minDueTime, maxDueTime, blobClient, false);
+                var shard = new AzureStorageJobShard(blob.Name, minDueTime, maxDueTime, blobClient);
                 await shard.InitializeAsync();
+                await shard.MarkAsComplete();
                 result.Add(shard);
             }
         }
         return result;
     }
 
-    public override async Task<JobShard> RegisterShard(SiloAddress siloAddress, DateTime minDueTime)
+    public override async Task<JobShard> RegisterShard(SiloAddress siloAddress, DateTimeOffset minDueTime, DateTimeOffset maxDueTime, IDictionary<string, string> metadata)
     {
         await InitializeIfNeeded();
         for (var i = 0;; i++) // TODO limit the number of attempts
         {
             var shardId = $"{minDueTime:yyyyMMddHHmm}-{siloAddress.ToParsableString()}-{i}";
             var blobClient = _client.GetAppendBlobClient(shardId);
-            var maxDueTime = minDueTime.Add(_maxShardDuration); 
-            var metadata = CreateMetadata(siloAddress, minDueTime, maxDueTime);
+            var metadataInfo = CreateMetadata(siloAddress, minDueTime, maxDueTime);
             try
             {
-                var response = await blobClient.CreateIfNotExistsAsync(metadata: metadata);
+                var response = await blobClient.CreateIfNotExistsAsync(metadata: metadataInfo);
                 if (response == null)
                 {
                     // Blob already exists, try again with a different name
@@ -94,7 +94,7 @@ public sealed class AzureStorageJobShardManager : JobShardManager
                 // Blob already exists, try again with a different name
                 continue;
             }
-            var shard = new AzureStorageJobShard(shardId, minDueTime, maxDueTime, blobClient, true);
+            var shard = new AzureStorageJobShard(shardId, minDueTime, maxDueTime, blobClient);
             await shard.InitializeAsync();
             return shard;
         }
@@ -134,7 +134,7 @@ public sealed class AzureStorageJobShardManager : JobShardManager
         return ValueTask.CompletedTask;
     }
 
-    private static Dictionary<string, string> CreateMetadata(SiloAddress siloAddress, DateTime minDueTime, DateTime maxDueTime)
+    private static Dictionary<string, string> CreateMetadata(SiloAddress siloAddress, DateTimeOffset minDueTime, DateTimeOffset maxDueTime)
     {
         return new Dictionary<string, string>
         {

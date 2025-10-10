@@ -15,6 +15,12 @@ namespace Tester.AzureUtils.ScheduledJobs;
 [TestCategory("ScheduledJobs")]
 public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
 {
+    private readonly IDictionary<string, string> _metadata = new Dictionary<string, string>
+    {
+        { "CreatedBy", "UnitTest" },
+        { "Purpose", "Testing" }
+    };
+
     [Fact, TestCategory("Azure"), TestCategory("Functional")]
     public async Task AzureStorageJobShardManager_Creation_Assignation()
     {
@@ -24,18 +30,19 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
 
         var localAddress = SiloAddress.New(new IPEndPoint(IPAddress.Loopback, 5000), 0);
 
-        var membershipService = new InMemoryIlusterMembershipService();
+        var membershipService = new InMemoryClusterMembershipService();
 
         var manager = new AzureStorageJobShardManager(options, membershipService);
         membershipService.SetSiloStatus(localAddress, SiloStatus.Active);
 
-        var date = DateTime.UtcNow;
+        var date = DateTimeOffset.Now;
+        var maxDate = date.AddHours(1);
 
         // Register multiple shards and ensure they are distinct
         // two of them have the same time range
-        var shard1 = await manager.RegisterShard(localAddress, date);
-        var shard2 = await manager.RegisterShard(localAddress, date);
-        var shard3 = await manager.RegisterShard(localAddress, date.AddHours(2));
+        var shard1 = await manager.RegisterShard(localAddress, date, maxDate, _metadata);
+        var shard2 = await manager.RegisterShard(localAddress, date, maxDate, _metadata);
+        var shard3 = await manager.RegisterShard(localAddress, date.AddHours(2), maxDate, _metadata);
 
         Assert.Distinct([shard1.Id, shard2.Id, shard3.Id]);
 
@@ -69,13 +76,13 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
         options.Value.ContainerName = "jobshardmanager" + Guid.NewGuid();
 
         var localAddress = SiloAddress.New(new IPEndPoint(IPAddress.Loopback, 5000), 0);
-        var membershipService = new InMemoryIlusterMembershipService();
+        var membershipService = new InMemoryClusterMembershipService();
         var manager = new AzureStorageJobShardManager(options, membershipService);
 
         membershipService.SetSiloStatus(localAddress, SiloStatus.Active);
 
         var date = DateTime.UtcNow;
-        var shard1 = await manager.RegisterShard(localAddress, date);
+        var shard1 = await manager.RegisterShard(localAddress, date, date.AddHours(1), _metadata);
 
         // Schedule some jobs
         await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job1", DateTime.UtcNow.AddSeconds(5));
@@ -95,7 +102,7 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
 
         var counter = 1;
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await foreach (var job in shard1.ReadJobsAsync().WithCancellation(cts.Token))
+        await foreach (var job in shard1.ConsumeScheduledJobsAsync().WithCancellation(cts.Token))
         {
             Assert.Equal($"job{counter}", job.Name);
             await shard1.RemoveJobAsync(job.Id);
@@ -111,36 +118,40 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
     [Fact, TestCategory("Azure"), TestCategory("Functional")]
     public async Task AzureStorageJobShardManager_LiveShard()
     {
+        var startTime = DateTime.UtcNow;
         var options = Options.Create(new AzureStorageJobShardOptions());
         options.Value.ConfigureTestDefaults();
         options.Value.MaxShardDuration = TimeSpan.FromSeconds(20);
         options.Value.ContainerName = "jobshardmanager" + Guid.NewGuid();
 
         var localAddress = SiloAddress.New(new IPEndPoint(IPAddress.Loopback, 5000), 0);
-        var membershipService = new InMemoryIlusterMembershipService();
+        var membershipService = new InMemoryClusterMembershipService();
         var manager = new AzureStorageJobShardManager(options, membershipService);
 
         membershipService.SetSiloStatus(localAddress, SiloStatus.Active);
 
         var date = DateTime.UtcNow;
-        var shard1 = await manager.RegisterShard(localAddress, date);
+        var shard1 = await manager.RegisterShard(localAddress, date, date.AddYears(1), _metadata);
 
         // Schedule some jobs
-        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job1", DateTime.UtcNow.AddSeconds(5));
-        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job3", DateTime.UtcNow.AddSeconds(10));
-        await shard1.ScheduleJobAsync(GrainId.Create("type", "target2"), "job2", DateTime.UtcNow.AddSeconds(6));
-        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job4", DateTime.UtcNow.AddSeconds(15));
+        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job0", startTime.AddSeconds(5));
+        await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job2", startTime.AddSeconds(10));
+        await shard1.ScheduleJobAsync(GrainId.Create("type", "target2"), "job1", startTime.AddSeconds(6));
+        var lastJob = await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job3", startTime.AddSeconds(15));
+        var jobToCancel = await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job4", startTime.AddSeconds(25));
 
-        var counter = 1;
+        var counter = 0;
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(40));
-        await foreach (var job in shard1.ReadJobsAsync().WithCancellation(cts.Token))
+        await shard1.MarkAsComplete();
+        await shard1.RemoveJobAsync(jobToCancel.Id);
+        await foreach (var job in shard1.ConsumeScheduledJobsAsync().WithCancellation(cts.Token))
         {
             Assert.Equal($"job{counter}", job.Name);
             await shard1.RemoveJobAsync(job.Id);
             counter++;
         }
-        Assert.Equal(5, counter);
-        Assert.True(shard1.EndTime <= DateTime.UtcNow);
+        Assert.Equal(4, counter);
+        Assert.True(lastJob.DueTime <= DateTimeOffset.Now);
         await manager.UnregisterShard(localAddress, shard1);
 
         // No unassigned shards
@@ -156,13 +167,13 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
         options.Value.ContainerName = "jobshardmanager" + Guid.NewGuid();
 
         var localAddress = SiloAddress.New(new IPEndPoint(IPAddress.Loopback, 5000), 0);
-        var membershipService = new InMemoryIlusterMembershipService();
+        var membershipService = new InMemoryClusterMembershipService();
         var manager = new AzureStorageJobShardManager(options, membershipService);
 
         membershipService.SetSiloStatus(localAddress, SiloStatus.Active);
 
         var date = DateTime.UtcNow;
-        var shard1 = await manager.RegisterShard(localAddress, date);
+        var shard1 = await manager.RegisterShard(localAddress, date, date.AddYears(1), _metadata);
 
         // Schedule some jobs
         await shard1.ScheduleJobAsync(GrainId.Create("type", "target1"), "job1", DateTime.UtcNow.AddSeconds(5));
@@ -172,7 +183,7 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
 
         var counter = 1;
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(40));
-        await foreach (var job in shard1.ReadJobsAsync().WithCancellation(cts.Token))
+        await foreach (var job in shard1.ConsumeScheduledJobsAsync().WithCancellation(cts.Token))
         {
             Assert.Equal($"job{counter}", job.Name);
             if (counter == 2)
@@ -188,7 +199,7 @@ public class AzureStorageJobShardManagerTests : AzureStorageBasicTests
         Assert.Equal(shard1.Id, shards[0].Id);
     }
 
-    private class InMemoryIlusterMembershipService : IClusterMembershipService
+    private class InMemoryClusterMembershipService : IClusterMembershipService
     {
         public ClusterMembershipSnapshot CurrentSnapshot => new ClusterMembershipSnapshot(silos.ToImmutableDictionary(), new MembershipVersion(_version));
 

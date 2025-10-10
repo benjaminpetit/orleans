@@ -16,23 +16,15 @@ internal sealed class AzureStorageJobShard : JobShard
     internal AppendBlobClient BlobClient { get; init; }
     internal ETag? ETag { get; private set; }
 
-    private readonly bool _isWriteable;
-    private ScheduledJobQueue _jobQueue;
+    private InMemoryJobQueue _jobQueue;
+    private bool _isComplete = false;
     private int _jobCount = 0;
 
-    public AzureStorageJobShard(string id, DateTime startTime, DateTime endTime, AppendBlobClient blobClient, bool isWriteable)
+    public AzureStorageJobShard(string id, DateTimeOffset startTime, DateTimeOffset endTime, AppendBlobClient blobClient)
         : base(id, startTime, endTime)
     {
         BlobClient = blobClient;
-        _isWriteable = isWriteable;
-        if (isWriteable)
-        {
-            _jobQueue = new ScheduledJobQueue(EndTime - DateTime.UtcNow + TimeSpan.FromSeconds(5));
-        }
-        else
-        {
-            _jobQueue = new ScheduledJobQueue();
-        }
+        _jobQueue = new InMemoryJobQueue();
     }
 
     public override ValueTask<int> GetJobCount()
@@ -40,7 +32,7 @@ internal sealed class AzureStorageJobShard : JobShard
         return ValueTask.FromResult(_jobCount);
     }
 
-    public override IAsyncEnumerable<IScheduledJob> ReadJobsAsync()
+    public override IAsyncEnumerable<IScheduledJob> ConsumeScheduledJobsAsync()
     {
         return _jobQueue;
     }
@@ -49,24 +41,28 @@ internal sealed class AzureStorageJobShard : JobShard
     {
         var operation = JobOperation.CreateRemoveOperation(jobId);
         await AppendOperation(operation);
+        _jobQueue.CancelJob(jobId);
         _jobCount--;
     }
 
-    public override async Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTime scheduledAt)
+    public override async Task<IScheduledJob> ScheduleJobAsync(GrainId target, string jobName, DateTimeOffset dueTime)
     {
+        if (_isComplete)
+            throw new InvalidOperationException("Cannot schedule job on a complete shard.");
+
         var jobId = Guid.NewGuid().ToString();
-        var operation = JobOperation.CreateAddOperation(jobId, jobName, scheduledAt, target);
+        var operation = JobOperation.CreateAddOperation(jobId, jobName, dueTime, target);
         await AppendOperation(operation);
         _jobCount++;
         var job = new ScheduledJob
         {
             Id = jobId,
             Name = jobName,
-            ScheduledAt = scheduledAt,
+            DueTime = dueTime,
             TargetGrainId = target,
             ShardId = Id
         };
-        await _jobQueue.Enqueue(job);
+        _jobQueue.Enqueue(job);
         return job;
     }
 
@@ -109,11 +105,11 @@ internal sealed class AzureStorageJobShard : JobShard
         // Rebuild the priority queue
         foreach (var op in dictionary.Values)
         {
-            await _jobQueue.Enqueue(new ScheduledJob
+            _jobQueue.Enqueue(new ScheduledJob
             {
                 Id = op.Id,
                 Name = op.Name!,
-                ScheduledAt = op.ScheduledAt!.Value,
+                DueTime = op.DueTime!.Value,
                 TargetGrainId = op.TargetGrainId!.Value,
                 ShardId = Id
             });
@@ -121,11 +117,13 @@ internal sealed class AzureStorageJobShard : JobShard
         _jobCount = dictionary.Count;
 
         ETag = response.Value.Details.ETag;
+    }
 
-        if (!_isWriteable)
-        {
-            await _jobQueue.Freeze();
-        }
+    public override Task MarkAsComplete()
+    {
+        _isComplete = true;
+        _jobQueue.MarkAsComplete();
+        return Task.CompletedTask;
     }
 }
 
@@ -141,11 +139,11 @@ internal struct JobOperation
 
     public string Id { get; init; }
     public string? Name { get; init; }
-    public DateTime? ScheduledAt { get; init; }
+    public DateTimeOffset? DueTime { get; init; }
     public GrainId? TargetGrainId { get; init; }
 
-    public static JobOperation CreateAddOperation(string id, string name, DateTime scheduledAt, GrainId targetGrainId) =>
-        new() { Type = OperationType.Add, Id = id, Name = name, ScheduledAt = scheduledAt, TargetGrainId = targetGrainId };
+    public static JobOperation CreateAddOperation(string id, string name, DateTimeOffset dueTime, GrainId targetGrainId) =>
+        new() { Type = OperationType.Add, Id = id, Name = name, DueTime = dueTime, TargetGrainId = targetGrainId };
 
     public static JobOperation CreateRemoveOperation(string id) =>
         new() { Type = OperationType.Remove, Id = id };
