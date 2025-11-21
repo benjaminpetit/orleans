@@ -381,7 +381,7 @@ public class ShardExecutorTests
         
         var extension = Substitute.For<IDurableJobReceiverExtension>();
         extension.DeliverDurableJobAsync(Arg.Any<IDurableJobContext>(), Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
+            .Returns(DurableJobRunResult.Completed());
         
         factory.GetGrain<IDurableJobReceiverExtension>(Arg.Any<GrainId>()).Returns(extension);
         
@@ -401,7 +401,7 @@ public class ShardExecutorTests
                 {
                     completedJobs.Add(context.Job.Id);
                 }
-                return Task.CompletedTask;
+                return Task.FromResult(DurableJobRunResult.Completed());
             });
         
         factory.GetGrain<IDurableJobReceiverExtension>(Arg.Any<GrainId>()).Returns(extension);
@@ -413,7 +413,11 @@ public class ShardExecutorTests
     {
         var extension = Substitute.For<IDurableJobReceiverExtension>();
         extension.DeliverDurableJobAsync(Arg.Any<IDurableJobContext>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => executionAction());
+            .Returns(async callInfo =>
+            {
+                await executionAction();
+                return DurableJobRunResult.Completed();
+            });
         
         factory.GetGrain<IDurableJobReceiverExtension>(Arg.Any<GrainId>()).Returns(extension);
     }
@@ -440,7 +444,8 @@ public class ShardExecutorTests
                     {
                         failedJobs.Add(context.Job.Id);
                     }
-                    throw new InvalidOperationException("Simulated job failure");
+                    var exception = new InvalidOperationException("Simulated job failure");
+                    return Task.FromResult(DurableJobRunResult.Failed(exception));
                 }
                 
                 // Other jobs succeed
@@ -448,7 +453,7 @@ public class ShardExecutorTests
                 {
                     completedJobs.Add(context.Job.Id);
                 }
-                return Task.CompletedTask;
+                return Task.FromResult(DurableJobRunResult.Completed());
             });
         
         factory.GetGrain<IDurableJobReceiverExtension>(Arg.Any<GrainId>()).Returns(extension);
