@@ -118,7 +118,7 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
                 LogClaimingShard(_logger, blob.Name, SiloAddress, owner);
                 var blobClient = _client.GetAppendBlobClient(blob.Name);
                 var metadata = blob.Metadata;
-                var orphanedShard = new AzureStorageJobShard(blob.Name, shardStartTime, maxDueTime, blobClient, metadata, blob.Properties.ETag, _options, _loggerFactory.CreateLogger<AzureStorageJobShard>());
+                var orphanedShard = new AzureStorageJobShard(blob.Name, shardStartTime, maxDueTime, blobClient, metadata, blob.Properties.ETag, _options, _loggerFactory.CreateLogger<AzureStorageJobShard>(), _loggerFactory.CreateLogger<AzureStorageJobShardStorage>());
                 if (!await TryTakeOwnership(orphanedShard, metadata, SiloAddress, cancellationToken))
                 {
                     // Someone else took over the shard, dispose and continue
@@ -209,7 +209,7 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
                 continue;
             }
             
-            var shard = new AzureStorageJobShard(shardId, minDueTime, maxDueTime, blobClient, metadataInfo, null, _options, _loggerFactory.CreateLogger<AzureStorageJobShard>());
+            var shard = new AzureStorageJobShard(shardId, minDueTime, maxDueTime, blobClient, metadataInfo, null, _options, _loggerFactory.CreateLogger<AzureStorageJobShard>(), _loggerFactory.CreateLogger<AzureStorageJobShardStorage>());
             await shard.InitializeAsync(cancellationToken);
             _jobShardCache[shardId] = shard;
             LogShardRegistered(_logger, shardId, SiloAddress);

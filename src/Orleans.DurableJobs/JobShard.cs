@@ -99,24 +99,25 @@ public interface IJobShard : IAsyncDisposable
 /// <summary>
 /// Base implementation of <see cref="IJobShard"/> that provides common functionality for job shard implementations.
 /// </summary>
-public abstract class JobShard : IJobShard
+public class JobShard : IJobShard
 {
     private readonly InMemoryJobQueue _jobQueue;
+    protected readonly IJobShardStorage? _storage;
 
     /// <inheritdoc/>
-    public string Id { get; protected set; }
+    public string Id { get; private set; }
 
     /// <inheritdoc/>
-    public DateTimeOffset StartTime { get; protected set; }
+    public DateTimeOffset StartTime { get; private set; }
 
     /// <inheritdoc/>
-    public DateTimeOffset EndTime { get; protected set; }
+    public DateTimeOffset EndTime { get; private set; }
 
     /// <inheritdoc/>
     public IDictionary<string, string>? Metadata { get; protected set; }
 
     /// <inheritdoc/>
-    public bool IsAddingCompleted { get; protected set; }
+    public bool IsAddingCompleted { get; private set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="JobShard"/> class.
@@ -124,11 +125,13 @@ public abstract class JobShard : IJobShard
     /// <param name="id">The unique identifier for this job shard.</param>
     /// <param name="startTime">The start time of the time range managed by this shard.</param>
     /// <param name="endTime">The end time of the time range managed by this shard.</param>
-    protected JobShard(string id, DateTimeOffset startTime, DateTimeOffset endTime)
+    /// <param name="storage">Optional storage implementation for persisting job operations.</param>
+    public JobShard(string id, DateTimeOffset startTime, DateTimeOffset endTime, IJobShardStorage? storage = null)
     {
         Id = id;
         StartTime = startTime;
         EndTime = endTime;
+        _storage = storage;
         _jobQueue = new InMemoryJobQueue();
     }
 
@@ -165,7 +168,10 @@ public abstract class JobShard : IJobShard
             Metadata = metadata
         };
 
-        await PersistAddJobAsync(jobId, jobName, dueTime, target, metadata, cancellationToken);
+        if (_storage is not null)
+        {
+            await _storage.PersistAddJobAsync(jobId, jobName, dueTime, target, metadata, cancellationToken);
+        }
         _jobQueue.Enqueue(job, 0);
         return job;
     }
@@ -173,7 +179,10 @@ public abstract class JobShard : IJobShard
     /// <inheritdoc/>
     public async Task<bool> RemoveJobAsync(string jobId, CancellationToken cancellationToken)
     {
-        await PersistRemoveJobAsync(jobId, cancellationToken);
+        if (_storage is not null)
+        {
+            await _storage.PersistRemoveJobAsync(jobId, cancellationToken);
+        }
         return _jobQueue.CancelJob(jobId);
     }
 
@@ -188,7 +197,10 @@ public abstract class JobShard : IJobShard
     /// <inheritdoc/>
     public async Task RetryJobLaterAsync(IDurableJobContext jobContext, DateTimeOffset newDueTime, CancellationToken cancellationToken)
     {
-        await PersistRetryJobAsync(jobContext.Job.Id, newDueTime, cancellationToken);
+        if (_storage is not null)
+        {
+            await _storage.PersistRetryJobAsync(jobContext.Job.Id, newDueTime, cancellationToken);
+        }
         _jobQueue.RetryJobLater(jobContext, newDueTime);
     }
 
@@ -197,44 +209,24 @@ public abstract class JobShard : IJobShard
     /// </summary>
     /// <param name="job">The job to enqueue.</param>
     /// <param name="dequeueCount">The number of times this job has been dequeued.</param>
-    protected void EnqueueJob(DurableJob job, int dequeueCount)
+    public void EnqueueJob(DurableJob job, int dequeueCount)
     {
         _jobQueue.Enqueue(job, dequeueCount);
     }
 
-    /// <summary>
-    /// Persists the addition of a new job to the underlying storage.
-    /// </summary>
-    /// <param name="jobId">The unique identifier of the job.</param>
-    /// <param name="jobName">The name of the job.</param>
-    /// <param name="dueTime">The time when the job should be executed.</param>
-    /// <param name="target">The grain identifier of the target grain.</param>
-    /// <param name="metadata">Optional metadata to associate with the job.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    protected abstract Task PersistAddJobAsync(string jobId, string jobName, DateTimeOffset dueTime, GrainId target, IReadOnlyDictionary<string, string>? metadata, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Persists the removal of a job from the underlying storage.
-    /// </summary>
-    /// <param name="jobId">The unique identifier of the job to remove.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    protected abstract Task PersistRemoveJobAsync(string jobId, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Persists the rescheduling of a job to the underlying storage.
-    /// </summary>
-    /// <param name="jobId">The unique identifier of the job to retry.</param>
-    /// <param name="newDueTime">The new due time for the job.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    protected abstract Task PersistRetryJobAsync(string jobId, DateTimeOffset newDueTime, CancellationToken cancellationToken);
-
     /// <inheritdoc/>
-    public virtual ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        GC.SuppressFinalize(this);
-        return default;
+        try
+        {
+            if (_storage is not null)
+            {
+                await _storage.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            GC.SuppressFinalize(this);
+        }
     }
 }
