@@ -28,7 +28,8 @@ internal sealed class AzureStorageJobShard : JobShard
         : base(id, startTime, endTime, new AzureStorageJobShardStorage(id, blobClient, eTag, options, storageLogger))
     {
         Metadata = metadata;
-        _azureStorage = (AzureStorageJobShardStorage)_storage!;
+        _azureStorage = _storage as AzureStorageJobShardStorage 
+            ?? throw new InvalidOperationException("AzureStorageJobShard requires AzureStorageJobShardStorage as storage implementation");
     }
 
     public async ValueTask InitializeAsync(CancellationToken cancellationToken)

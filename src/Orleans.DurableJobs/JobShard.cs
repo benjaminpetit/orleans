@@ -114,7 +114,7 @@ public class JobShard : IJobShard
     public DateTimeOffset EndTime { get; private set; }
 
     /// <inheritdoc/>
-    public IDictionary<string, string>? Metadata { get; set; }
+    public IDictionary<string, string>? Metadata { get; protected set; }
 
     /// <inheritdoc/>
     public bool IsAddingCompleted { get; private set; }
