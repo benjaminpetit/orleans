@@ -13,6 +13,8 @@ namespace Orleans.DurableJobs.AzureStorage;
 [DebuggerDisplay("ShardId={Id}, StartTime={StartTime}, EndTime={EndTime}")]
 internal sealed class AzureStorageJobShard : JobShard
 {
+    private readonly AzureStorageJobShardStorage _azureStorage;
+
     public AzureStorageJobShard(
         string id,
         DateTimeOffset startTime,
@@ -26,12 +28,12 @@ internal sealed class AzureStorageJobShard : JobShard
         : base(id, startTime, endTime, new AzureStorageJobShardStorage(id, blobClient, eTag, options, storageLogger))
     {
         Metadata = metadata;
+        _azureStorage = (AzureStorageJobShardStorage)_storage!;
     }
 
     public async ValueTask InitializeAsync(CancellationToken cancellationToken)
     {
-        var storage = (AzureStorageJobShardStorage)_storage!;
-        await foreach (var (job, dequeueCount) in storage.LoadJobsAsync(cancellationToken))
+        await foreach (var (job, dequeueCount) in _azureStorage.LoadJobsAsync(cancellationToken))
         {
             EnqueueJob(job, dequeueCount);
         }
@@ -39,14 +41,12 @@ internal sealed class AzureStorageJobShard : JobShard
 
     public async Task UpdateBlobMetadata(IDictionary<string, string> metadata, CancellationToken cancellationToken)
     {
-        var storage = (AzureStorageJobShardStorage)_storage!;
-        await storage.UpdateBlobMetadata(metadata, cancellationToken);
+        await _azureStorage.UpdateBlobMetadata(metadata, cancellationToken);
         Metadata = metadata;
     }
 
     internal async Task StopProcessorAsync(CancellationToken cancellationToken)
     {
-        var storage = (AzureStorageJobShardStorage)_storage!;
-        await storage.StopProcessorAsync(cancellationToken);
+        await _azureStorage.StopProcessorAsync(cancellationToken);
     }
 }

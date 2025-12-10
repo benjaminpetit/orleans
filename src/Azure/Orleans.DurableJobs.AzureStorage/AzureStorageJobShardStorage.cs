@@ -296,7 +296,6 @@ internal sealed partial class AzureStorageJobShardStorage : IJobShardStorage
             {
                 NetstringJsonSerializer<JobOperation>.Encode(operation.JobOperation!.Value, stream, JobOperationJsonContext.Default.JobOperation);
             }
-            var str = System.Text.Encoding.UTF8.GetString(stream.ToArray());
             stream.Position = 0;
             var result = await BlobClient.AppendBlockAsync(
                 stream,

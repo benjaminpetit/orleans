@@ -217,10 +217,16 @@ public class JobShard : IJobShard
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        if (_storage is not null)
+        try
         {
-            await _storage.DisposeAsync();
+            if (_storage is not null)
+            {
+                await _storage.DisposeAsync().ConfigureAwait(false);
+            }
         }
-        GC.SuppressFinalize(this);
+        finally
+        {
+            GC.SuppressFinalize(this);
+        }
     }
 }
