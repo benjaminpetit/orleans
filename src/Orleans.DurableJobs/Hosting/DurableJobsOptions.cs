@@ -77,7 +77,19 @@ public sealed class DurableJobsOptionsValidator : IConfigurationValidator
         {
             throw new OrleansConfigurationException("DurableJobsOptions.ShardDuration must be greater than zero.");
         }
-        if (options.ShouldRetry == null)
+        if (options.ShardActivationBufferPeriod < TimeSpan.Zero)
+        {
+            throw new OrleansConfigurationException("DurableJobsOptions.ShardActivationBufferPeriod must be greater than or equal to zero.");
+        }
+        if (options.MaxConcurrentJobsPerSilo <= 0)
+        {
+            throw new OrleansConfigurationException("DurableJobsOptions.MaxConcurrentJobsPerSilo must be greater than zero.");
+        }
+        if (options.OverloadBackoffDelay <= TimeSpan.Zero)
+        {
+            throw new OrleansConfigurationException("DurableJobsOptions.OverloadBackoffDelay must be greater than zero.");
+        }
+        if (options.ShouldRetry is null)
         {
             throw new OrleansConfigurationException("DurableJobsOptions.ShouldRetry must not be null.");
         }

@@ -14,7 +14,7 @@ namespace Orleans.DurableJobs;
 /// <summary>
 /// Handles the execution of job shards and individual durable jobs.
 /// </summary>
-internal sealed partial class ShardExecutor
+internal sealed partial class ShardExecutor : IDisposable
 {
     private readonly IInternalGrainFactory _grainFactory;
     private readonly ILogger<ShardExecutor> _logger;
@@ -130,6 +130,7 @@ internal sealed partial class ShardExecutor
             else
             {
                 LogJobFailedNoRetry(_logger, jobContext.Job.Id, jobContext.Job.Name, jobContext.DequeueCount);
+                await shard.RemoveJobAsync(jobContext.Job.Id, cancellationToken);
             }
         }
         finally
@@ -137,5 +138,13 @@ internal sealed partial class ShardExecutor
             _jobConcurrencyLimiter.Release();
             runningTasks.TryRemove(jobContext.Job.Id, out _);
         }
+    }
+
+    /// <summary>
+    /// Disposes resources used by the shard executor.
+    /// </summary>
+    public void Dispose()
+    {
+        _jobConcurrencyLimiter.Dispose();
     }
 }

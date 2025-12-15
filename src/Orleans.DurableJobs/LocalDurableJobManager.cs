@@ -165,6 +165,12 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
 
         await Task.WhenAll(_runningShards.Values.ToArray());
 
+        // Dispose resources after all tasks have completed
+        _shardCreationLock.Dispose();
+        _shardCheckSignal.Dispose();
+        _cts.Dispose();
+        _shardExecutor.Dispose();
+
         LogStopped(_logger);
     }
 
