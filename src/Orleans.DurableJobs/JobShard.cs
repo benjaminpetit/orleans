@@ -124,6 +124,15 @@ public sealed class JobShard : IJobShard
     
     /// <inheritdoc/>
     public bool IsAddingCompleted { get; private set; }
+
+    /// <summary>
+    /// Gets a value indicating whether this shard has been initialized by loading jobs from storage.
+    /// </summary>
+    /// <remarks>
+    /// When a shard is not initialized, jobs are only persisted to storage but not added to the in-memory queue.
+    /// Once initialized via <see cref="InitializeAsync"/>, jobs are both persisted and queued.
+    /// </remarks>
+    public bool IsInitialized { get; private set; }
     
     /// <summary>
     /// Initializes a new instance of the <see cref="JobShard"/> class.
@@ -151,12 +160,17 @@ public sealed class JobShard : IJobShard
     
     /// <summary>
     /// Initializes the shard by loading all jobs from storage into the in-memory queue.
-    /// Must be called after construction and before using the shard.
+    /// This method is idempotent and can be called multiple times safely.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
     /// <exception cref="Exception">Thrown when initialization fails (corrupt data, network issues, etc.).</exception>
     public async Task InitializeAsync(CancellationToken ct)
     {
+        if (IsInitialized)
+        {
+            return;
+        }
+
         var records = await Storage.LoadAllJobsAsync(ct);
         
         foreach (var record in records)
@@ -172,6 +186,8 @@ public sealed class JobShard : IJobShard
             };
             _queue.Enqueue(job, record.DequeueCount);
         }
+
+        IsInitialized = true;
     }
     
     /// <inheritdoc/>
@@ -211,8 +227,13 @@ public sealed class JobShard : IJobShard
             new JobStorageRecord(jobId, jobName, target, dueTime, metadata, 0),
             cancellationToken);
         
-        // Add to in-memory queue AFTER successful persistence
-        _queue.Enqueue(job, 0);
+        // Add to in-memory queue AFTER successful persistence, but only if the shard is initialized.
+        // Non-initialized shards will load jobs from storage when activated.
+        if (IsInitialized)
+        {
+            _queue.Enqueue(job, 0);
+        }
+
         return job;
     }
     
