@@ -92,7 +92,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         var manager = CreateManager(localAddress);
 
         var date = DateTime.UtcNow;
-        var shard = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var storage = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var shard = new JobShard(storage.ShardId, storage.StartTime, storage.EndTime, storage, storage.Metadata);
+        await shard.InitializeAsync(CancellationToken.None);
 
         // Schedule 10 jobs rapidly to trigger batching
         var tasks = new List<Task>();
@@ -107,9 +109,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         await Task.Delay(TimeSpan.FromMilliseconds(300));
 
         // Verify batching occurred - should have fewer committed blocks than individual operations
-        var storage = manager.GetShardStorageForTesting(shard.Id);
-        Assert.NotNull(storage);
-        Assert.True(storage.CommittedBlockCount < 10, $"Expected batching to reduce block count, but got {storage.CommittedBlockCount}");
+        var azureStorage = manager.GetShardStorageForTesting(storage.ShardId);
+        Assert.NotNull(azureStorage);
+        Assert.True(azureStorage.CommittedBlockCount < 10, $"Expected batching to reduce block count, but got {azureStorage.CommittedBlockCount}");
 
         // Verify all jobs were persisted by marking silo as dead and reassigning
         SetSiloStatus(localAddress, SiloStatus.Dead);
@@ -117,19 +119,24 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         SetSiloStatus(newSiloAddress, SiloStatus.Active);
 
         var newManager = CreateManager(newSiloAddress);
-        var shards = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
-        Assert.Single(shards);
+        var storages = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
+        Assert.Single(storages);
+        
+        var stolenStorage = storages[0];
+        var stolenShard = new JobShard(stolenStorage.ShardId, stolenStorage.StartTime, stolenStorage.EndTime, stolenStorage, stolenStorage.Metadata);
+        await stolenShard.InitializeAsync(CancellationToken.None);
+        await stolenShard.MarkAsCompleteAsync(CancellationToken.None);
 
         var consumedJobs = new List<string>();
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await foreach (var jobCtx in shards[0].ConsumeDurableJobsAsync().WithCancellation(cts.Token))
+        await foreach (var jobCtx in stolenShard.ConsumeDurableJobsAsync().WithCancellation(cts.Token))
         {
             consumedJobs.Add(jobCtx.Job.Name);
-            await shards[0].RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
+            await stolenShard.RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
         }
 
         Assert.Equal(10, consumedJobs.Count);
-        await newManager.UnregisterShardAsync(shards[0], CancellationToken.None);
+        await newManager.UnregisterShardAsync(stolenStorage, shouldDelete: true, CancellationToken.None);
     }
 
     [SkippableFact, TestCategory("Azure"), TestCategory("Functional")]
@@ -145,7 +152,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         var manager = CreateManager(localAddress);
 
         var date = DateTime.UtcNow;
-        var shard = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var storage = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var shard = new JobShard(storage.ShardId, storage.StartTime, storage.EndTime, storage, storage.Metadata);
+        await shard.InitializeAsync(CancellationToken.None);
 
         // Schedule only 3 jobs (less than MinBatchSize of 10)
         var tasks = new Task[3];
@@ -156,9 +165,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         await Task.WhenAll(tasks);
 
         // Verify that the partial batch was flushed - should have 1 committed block
-        var storage = manager.GetShardStorageForTesting(shard.Id);
-        Assert.NotNull(storage);
-        Assert.Equal(1, storage.CommittedBlockCount);
+        var azureStorage = manager.GetShardStorageForTesting(storage.ShardId);
+        Assert.NotNull(azureStorage);
+        Assert.Equal(1, azureStorage.CommittedBlockCount);
 
         // Verify jobs were persisted despite not reaching MinBatchSize
         SetSiloStatus(localAddress, SiloStatus.Dead);
@@ -166,19 +175,24 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         SetSiloStatus(newSiloAddress, SiloStatus.Active);
 
         var newManager = CreateManager(newSiloAddress);
-        var shards = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
-        Assert.Single(shards);
+        var storages = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
+        Assert.Single(storages);
+        
+        var stolenStorage = storages[0];
+        var stolenShard = new JobShard(stolenStorage.ShardId, stolenStorage.StartTime, stolenStorage.EndTime, stolenStorage, stolenStorage.Metadata);
+        await stolenShard.InitializeAsync(CancellationToken.None);
+        await stolenShard.MarkAsCompleteAsync(CancellationToken.None);
 
         var consumedJobs = new List<string>();
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await foreach (var jobCtx in shards[0].ConsumeDurableJobsAsync().WithCancellation(cts.Token))
+        await foreach (var jobCtx in stolenShard.ConsumeDurableJobsAsync().WithCancellation(cts.Token))
         {
             consumedJobs.Add(jobCtx.Job.Name);
-            await shards[0].RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
+            await stolenShard.RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
         }
 
         Assert.Equal(3, consumedJobs.Count);
-        await newManager.UnregisterShardAsync(shards[0], CancellationToken.None);
+        await newManager.UnregisterShardAsync(stolenStorage, shouldDelete: true, CancellationToken.None);
     }
 
     [SkippableFact, TestCategory("Azure"), TestCategory("Functional")]
@@ -194,7 +208,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         var manager = CreateManager(localAddress);
 
         var date = DateTime.UtcNow;
-        var shard = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var storage = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var shard = new JobShard(storage.ShardId, storage.StartTime, storage.EndTime, storage, storage.Metadata);
+        await shard.InitializeAsync(CancellationToken.None);
 
         // Schedule 50 jobs rapidly (exceeds MaxBatchSize of 20)
         var tasks = new List<Task>();
@@ -210,9 +226,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
 
         // Verify multiple batches were created due to MaxBatchSize limit
         // With 50 jobs and MaxBatchSize=20, expect at least 3 blocks (50/20 = 2.5, rounded up)
-        var storage = manager.GetShardStorageForTesting(shard.Id);
-        Assert.NotNull(storage);
-        Assert.True(storage.CommittedBlockCount >= 3, $"Expected at least 3 blocks for 50 jobs with MaxBatchSize=20, but got {storage.CommittedBlockCount}");
+        var azureStorage = manager.GetShardStorageForTesting(storage.ShardId);
+        Assert.NotNull(azureStorage);
+        Assert.True(azureStorage.CommittedBlockCount >= 3, $"Expected at least 3 blocks for 50 jobs with MaxBatchSize=20, but got {azureStorage.CommittedBlockCount}");
 
         // Verify all jobs were persisted (should be split into multiple batches)
         SetSiloStatus(localAddress, SiloStatus.Dead);
@@ -220,19 +236,24 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         SetSiloStatus(newSiloAddress, SiloStatus.Active);
 
         var newManager = CreateManager(newSiloAddress);
-        var shards = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
-        Assert.Single(shards);
+        var storages = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
+        Assert.Single(storages);
+        
+        var stolenStorage = storages[0];
+        var stolenShard = new JobShard(stolenStorage.ShardId, stolenStorage.StartTime, stolenStorage.EndTime, stolenStorage, stolenStorage.Metadata);
+        await stolenShard.InitializeAsync(CancellationToken.None);
+        await stolenShard.MarkAsCompleteAsync(CancellationToken.None);
 
         var consumedJobs = new List<string>();
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await foreach (var jobCtx in shards[0].ConsumeDurableJobsAsync().WithCancellation(cts.Token))
+        await foreach (var jobCtx in stolenShard.ConsumeDurableJobsAsync().WithCancellation(cts.Token))
         {
             consumedJobs.Add(jobCtx.Job.Name);
-            await shards[0].RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
+            await stolenShard.RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
         }
 
         Assert.Equal(50, consumedJobs.Count);
-        await newManager.UnregisterShardAsync(shards[0], CancellationToken.None);
+        await newManager.UnregisterShardAsync(stolenStorage, shouldDelete: true, CancellationToken.None);
     }
 
     [SkippableFact, TestCategory("Azure"), TestCategory("Functional")]
@@ -248,7 +269,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         var manager = CreateManager(localAddress);
 
         var date = DateTime.UtcNow;
-        var shard = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var storage = await manager.CreateShardAsync(date, date.AddHours(1), _metadata, CancellationToken.None);
+        var shard = new JobShard(storage.ShardId, storage.StartTime, storage.EndTime, storage, storage.Metadata);
+        await shard.InitializeAsync(CancellationToken.None);
 
         // Schedule 5 jobs (less than MinBatchSize)
         var tasks = new List<Task>();
@@ -261,19 +284,19 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         await Task.Delay(50);
 
         // Verify no blocks committed yet (batch still pending)
-        var storage = manager.GetShardStorageForTesting(shard.Id);
-        Assert.NotNull(storage);
-        var blockCountBefore = storage.CommittedBlockCount;
+        var azureStorage = manager.GetShardStorageForTesting(storage.ShardId);
+        Assert.NotNull(azureStorage);
+        var blockCountBefore = azureStorage.CommittedBlockCount;
 
         // Update metadata (should flush pending batch and process immediately)
         var newMetadata = new Dictionary<string, string>(shard.Metadata) { ["Updated"] = "true" };
-        await storage.UpdateBlobMetadataAsync(newMetadata, CancellationToken.None);
+        await azureStorage.UpdateBlobMetadataAsync(newMetadata, CancellationToken.None);
 
         Assert.All(tasks, t => Assert.True(t.IsCompletedSuccessfully, "Expected all job scheduling tasks to complete successfully"));
-        Assert.True(storage.CommittedBlockCount > blockCountBefore, "Expected metadata update to flush pending batch");
+        Assert.True(azureStorage.CommittedBlockCount > blockCountBefore, "Expected metadata update to flush pending batch");
 
         // Verify metadata was updated
-        var props = await storage.BlobClient.GetPropertiesAsync();
+        var props = await azureStorage.BlobClient.GetPropertiesAsync();
         Assert.True(props.Value.Metadata.ContainsKey("Updated"));
         Assert.Equal("true", props.Value.Metadata["Updated"]);
 
@@ -288,19 +311,24 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         StorageOptions.Value.BatchFlushInterval = TimeSpan.FromMilliseconds(100);
 
         var newManager = CreateManager(newSiloAddress);
-        var shards = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
-        Assert.Single(shards);
+        var storages = await newManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), CancellationToken.None);
+        Assert.Single(storages);
+        
+        var stolenStorage = storages[0];
+        var stolenShard = new JobShard(stolenStorage.ShardId, stolenStorage.StartTime, stolenStorage.EndTime, stolenStorage, stolenStorage.Metadata);
+        await stolenShard.InitializeAsync(CancellationToken.None);
+        await stolenShard.MarkAsCompleteAsync(CancellationToken.None);
 
         var consumedJobs = new List<string>();
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        await foreach (var jobCtx in shards[0].ConsumeDurableJobsAsync().WithCancellation(cts.Token))
+        await foreach (var jobCtx in stolenShard.ConsumeDurableJobsAsync().WithCancellation(cts.Token))
         {
             consumedJobs.Add(jobCtx.Job.Name);
-            await shards[0].RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
+            await stolenShard.RemoveJobAsync(jobCtx.Job.Id, CancellationToken.None);
         }
 
         Assert.Equal(5, consumedJobs.Count);
-        await newManager.UnregisterShardAsync(shards[0], CancellationToken.None);
+        await newManager.UnregisterShardAsync(stolenStorage, shouldDelete: true, CancellationToken.None);
     }
 
     public class InMemoryClusterMembershipService : IClusterMembershipService

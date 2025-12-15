@@ -28,6 +28,11 @@ public sealed partial class AzureStorageJobShardStorage : IJobShardStorage
     private readonly string _shardId;
     private ETag? _etag;
     
+    public string ShardId => _shardId;
+    public DateTimeOffset StartTime { get; }
+    public DateTimeOffset EndTime { get; }
+    public IDictionary<string, string>? Metadata { get; }
+    
     /// <summary>
     /// Gets the number of committed blocks in the append blob.
     /// This is useful for testing batching behavior.
@@ -43,12 +48,18 @@ public sealed partial class AzureStorageJobShardStorage : IJobShardStorage
         string shardId,
         AppendBlobClient blobClient,
         ETag? initialETag,
+        DateTimeOffset startTime,
+        DateTimeOffset endTime,
+        IDictionary<string, string>? metadata,
         AzureStorageJobShardOptions options,
         ILogger<AzureStorageJobShardStorage> logger)
     {
         _shardId = shardId;
         _blobClient = blobClient;
         _etag = initialETag;
+        StartTime = startTime;
+        EndTime = endTime;
+        Metadata = metadata;
         _options = options;
         _logger = logger;
         

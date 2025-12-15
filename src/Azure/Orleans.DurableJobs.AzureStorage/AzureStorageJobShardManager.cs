@@ -25,7 +25,7 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
     private readonly string _blobPrefix;
     private BlobContainerClient _client = null!;
     private readonly IClusterMembershipService _clusterMembership;
-    private readonly ConcurrentDictionary<string, (JobShard Shard, AzureStorageJobShardStorage Storage)> _jobShardCache = new();
+    private readonly ConcurrentDictionary<string, AzureStorageJobShardStorage> _jobShardCache = new();
     private readonly ILogger<AzureStorageJobShardManager> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly AzureStorageJobShardOptions _options;
@@ -59,12 +59,12 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
     {
     }
 
-    public override async Task<List<Orleans.DurableJobs.IJobShard>> AssignJobShardsAsync(DateTimeOffset maxShardStartTime, CancellationToken cancellationToken)
+    public override async Task<List<IJobShardStorage>> AssignJobShardsAsync(DateTimeOffset maxShardStartTime, CancellationToken cancellationToken)
     {
         await InitializeIfNeeded(cancellationToken);
         LogAssigningShards(_logger, SiloAddress, maxShardStartTime, _containerName);
 
-        var result = new List<Orleans.DurableJobs.IJobShard>();
+        var result = new List<IJobShardStorage>();
         await foreach (var blob in _client.GetBlobsAsync(traits: BlobTraits.Metadata, cancellationToken: cancellationToken, prefix: _blobPrefix))
         {
             // Get the owner and creator of the shard
@@ -88,10 +88,10 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
             // If I am the owner, the shard must be in cache - always return it
             if (owner is not null && owner.Equals(SiloAddress))
             {
-                if (_jobShardCache.TryGetValue(blob.Name, out var entry))
+                if (_jobShardCache.TryGetValue(blob.Name, out var storage))
                 {
                     LogShardAssigned(_logger, blob.Name, SiloAddress);
-                    result.Add(entry.Shard);
+                    result.Add(storage);
                 }
                 else
                 {
@@ -133,19 +133,16 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
                 var storage = new AzureStorageJobShardStorage(
                     blob.Name, 
                     blobClient, 
-                    etag, 
+                    etag,
+                    shardStartTime,
+                    maxDueTime,
+                    metadata,
                     _options, 
                     _loggerFactory.CreateLogger<AzureStorageJobShardStorage>());
                 
-                // Create the shard with the storage implementation
-                var orphanedShard = new JobShard(blob.Name, shardStartTime, maxDueTime, storage);
-                await orphanedShard.InitializeAsync(cancellationToken);
-                
-                // We don't want to add new jobs to shards that we just took ownership of
-                await orphanedShard.MarkAsCompleteAsync(cancellationToken);
-                _jobShardCache[blob.Name] = (orphanedShard, storage);
+                _jobShardCache[blob.Name] = storage;
                 LogShardAssigned(_logger, blob.Name, SiloAddress);
-                result.Add(orphanedShard);
+                result.Add(storage);
             }
         }
         
@@ -188,7 +185,7 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
         }
     }
 
-    public override async Task<Orleans.DurableJobs.IJobShard> CreateShardAsync(DateTimeOffset minDueTime, DateTimeOffset maxDueTime, IDictionary<string, string> metadata, CancellationToken cancellationToken)
+    public override async Task<IJobShardStorage> CreateShardAsync(DateTimeOffset minDueTime, DateTimeOffset maxDueTime, IDictionary<string, string> metadata, CancellationToken cancellationToken)
     {
         await InitializeIfNeeded(cancellationToken);
         LogRegisteringShard(_logger, SiloAddress, minDueTime, maxDueTime, _containerName);
@@ -227,31 +224,30 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
             var storage = new AzureStorageJobShardStorage(
                 shardId, 
                 blobClient, 
-                null, // No ETag yet since we just created the blob
+                null,
+                minDueTime,
+                maxDueTime,
+                metadataInfo,
                 _options, 
                 _loggerFactory.CreateLogger<AzureStorageJobShardStorage>());
             
-            // Create the shard with the storage implementation
-            var shard = new JobShard(shardId, minDueTime, maxDueTime, storage);
-            await shard.InitializeAsync(cancellationToken);
-            _jobShardCache[shardId] = (shard, storage);
+            _jobShardCache[shardId] = storage;
             LogShardRegistered(_logger, shardId, SiloAddress);
-            return shard;
+            return storage;
         }
     }
 
-    public override async Task UnregisterShardAsync(Orleans.DurableJobs.IJobShard shard, CancellationToken cancellationToken)
+    public override async Task UnregisterShardAsync(IJobShardStorage storage, bool shouldDelete, CancellationToken cancellationToken)
     {
-        if (!_jobShardCache.TryGetValue(shard.Id, out var entry))
+        if (!_jobShardCache.TryGetValue(storage.ShardId, out var azureStorage))
         {
-            throw new ArgumentException($"Shard '{shard.Id}' is not in the cache", nameof(shard));
+            throw new ArgumentException($"Shard '{storage.ShardId}' is not in the cache", nameof(storage));
         }
         
-        var (jobShard, storage) = entry;
-        LogUnregisteringShard(_logger, shard.Id, SiloAddress);
+        LogUnregisteringShard(_logger, storage.ShardId, SiloAddress);
         
         // Get the blob client (we need to access it for metadata operations)
-        var blobClient = _client.GetAppendBlobClient(shard.Id);
+        var blobClient = _client.GetAppendBlobClient(storage.ShardId);
         
         // We want to make sure to get the latest properties
         var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
@@ -264,30 +260,27 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
 
         if (owner != SiloAddress)
         {
-            LogUnregisterWrongOwner(_logger, shard.Id, SiloAddress, owner);
+            LogUnregisterWrongOwner(_logger, storage.ShardId, SiloAddress, owner);
             throw new InvalidOperationException("Cannot unregister a shard owned by another silo");
         }
 
         // Dispose the storage to stop the background processor and ensure no more changes
-        await storage.DisposeAsync();
-        
-        // Now we can safely get a consistent view of the state
-        var count = await shard.GetJobCountAsync();
+        await azureStorage.DisposeAsync();
 
-        if (count > 0)
+        if (shouldDelete)
+        {
+            // No jobs left, we can delete the shard
+            await blobClient.DeleteIfExistsAsync(conditions: conditions, cancellationToken: cancellationToken);
+            _jobShardCache.TryRemove(storage.ShardId, out _);
+            LogShardDeleted(_logger, storage.ShardId, SiloAddress);
+        }
+        else
         {
             // There are still jobs in the shard, unregister it
             metadata.Remove("Owner");
             var response = await blobClient.SetMetadataAsync(metadata, conditions, cancellationToken);
-            _jobShardCache.TryRemove(shard.Id, out _);
-            LogShardOwnershipReleased(_logger, shard.Id, SiloAddress, count);
-        }
-        else
-        {
-            // No jobs left, we can delete the shard
-            await blobClient.DeleteIfExistsAsync(conditions: conditions, cancellationToken: cancellationToken);
-            _jobShardCache.TryRemove(shard.Id, out _);
-            LogShardDeleted(_logger, shard.Id, SiloAddress);
+            _jobShardCache.TryRemove(storage.ShardId, out _);
+            LogShardOwnershipReleased(_logger, storage.ShardId, SiloAddress);
         }
     }
 
@@ -331,7 +324,7 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
     /// <returns>The Azure Storage job shard storage, or null if not found.</returns>
     internal Storage.AzureStorageJobShardStorage? GetShardStorageForTesting(string shardId)
     {
-        return _jobShardCache.TryGetValue(shardId, out var entry) ? entry.Storage : null;
+        return _jobShardCache.TryGetValue(shardId, out var storage) ? storage : null;
     }
 
     [LoggerMessage(
@@ -444,9 +437,9 @@ public sealed partial class AzureStorageJobShardManager : JobShardManager
 
     [LoggerMessage(
         Level = LogLevel.Information,
-        Message = "Released ownership of shard '{ShardId}' by silo {SiloAddress} ({JobCount} jobs remaining)"
+        Message = "Released ownership of shard '{ShardId}' by silo {SiloAddress} (shard not deleted)"
     )]
-    private static partial void LogShardOwnershipReleased(ILogger logger, string shardId, SiloAddress siloAddress, int jobCount);
+    private static partial void LogShardOwnershipReleased(ILogger logger, string shardId, SiloAddress siloAddress);
 
     [LoggerMessage(
         Level = LogLevel.Information,

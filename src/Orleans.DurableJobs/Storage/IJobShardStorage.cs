@@ -14,6 +14,28 @@ namespace Orleans.DurableJobs.Storage;
 public interface IJobShardStorage : IAsyncDisposable
 {
     /// <summary>
+    /// Gets the unique identifier for this shard's storage.
+    /// </summary>
+    string ShardId { get; }
+    
+    /// <summary>
+    /// Gets the start time of the time range managed by this shard.
+    /// </summary>
+    DateTimeOffset StartTime { get; }
+    
+    /// <summary>
+    /// Gets the end time of the time range managed by this shard.
+    /// </summary>
+    DateTimeOffset EndTime { get; }
+    
+    /// <summary>
+    /// Gets metadata associated with this shard's storage.
+    /// For Azure Storage: includes all blob metadata (Owner, MembershipVersion, custom metadata, etc.)
+    /// For InMemory: includes only custom metadata passed during creation
+    /// </summary>
+    IDictionary<string, string>? Metadata { get; }
+    
+    /// <summary>
     /// Persists a new job to storage.
     /// </summary>
     /// <exception cref="Exception">Thrown when persistence fails.</exception>

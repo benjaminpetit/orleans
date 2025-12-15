@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Orleans.DurableJobs.Storage;
 using Orleans.Hosting;
 using Orleans.Internal;
 using Orleans.Runtime;
@@ -27,8 +28,8 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
     private Task? _periodicCheckTask;
 
     // Shard tracking state
-    private readonly ConcurrentDictionary<string, IJobShard> _shardCache = new();
-    private readonly ConcurrentDictionary<DateTimeOffset, IJobShard> _writeableShards = new();
+    private readonly ConcurrentDictionary<string, JobShard> _shardCache = new();
+    private readonly ConcurrentDictionary<DateTimeOffset, JobShard> _writeableShards = new();
     private readonly ConcurrentDictionary<string, Task> _runningShards = new();
     private readonly SemaphoreSlim _shardCreationLock = new(1, 1);
     private readonly SemaphoreSlim _shardCheckSignal = new(0);
@@ -88,7 +89,11 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
                 // Create new shard
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);
                 var endTime = shardKey.Add(_options.ShardDuration);
-                var newShard = await _shardManager.CreateShardAsync(shardKey, endTime, EmptyMetadata, linkedCts.Token);
+                var storage = await _shardManager.CreateShardAsync(shardKey, endTime, EmptyMetadata, linkedCts.Token);
+
+                // Wrap storage in JobShard for business logic
+                var newShard = new JobShard(storage.ShardId, storage.StartTime, storage.EndTime, storage, storage.Metadata);
+                await newShard.InitializeAsync(linkedCts.Token);
 
                 LogCreatingNewShard(_logger, shardKey);
                 _writeableShards[shardKey] = newShard;
@@ -248,17 +253,30 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
                 }
 
                 // Query ShardManager for assigned shards (source of truth)
-                var shards = await _shardManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), _cts.Token);
-                if (shards.Count > 0)
+                var storages = await _shardManager.AssignJobShardsAsync(DateTime.UtcNow.AddHours(1), _cts.Token);
+                if (storages.Count > 0)
                 {
-                    LogAssignedShards(_logger, shards.Count);
-                    foreach (var shard in shards)
+                    LogAssignedShards(_logger, storages.Count);
+                    foreach (var storage in storages)
                     {
-                        _shardCache.TryAdd(shard.Id, shard);
-
-                        if (!_runningShards.ContainsKey(shard.Id))
+                        // Check if already in cache (already owned)
+                        bool isNewlyAssigned = !_shardCache.ContainsKey(storage.ShardId);
+                        
+                        // Wrap storage in JobShard if not already cached
+                        if (isNewlyAssigned)
                         {
-                            TryActivateShard(shard);
+                            var shard = new JobShard(storage.ShardId, storage.StartTime, storage.EndTime, storage, storage.Metadata);
+                            await shard.InitializeAsync(_cts.Token);
+                            
+                            // Mark newly assigned (stolen) shards as complete
+                            await shard.MarkAsCompleteAsync(_cts.Token);
+                            
+                            _shardCache.TryAdd(shard.Id, shard);
+
+                            if (!_runningShards.ContainsKey(shard.Id))
+                            {
+                                TryActivateShard(shard);
+                            }
                         }
                     }
                 }
@@ -279,7 +297,7 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
         }
     }
 
-    private void TryActivateShard(IJobShard shard)
+    private void TryActivateShard(JobShard shard)
     {
         // Only start if not already running
         if (_runningShards.ContainsKey(shard.Id))
@@ -301,7 +319,7 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
         }
     }
 
-    private async Task RunShardWithCleanupAsync(IJobShard shard)
+    private async Task RunShardWithCleanupAsync(JobShard shard)
     {
         try
         {
@@ -310,7 +328,11 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
             // Unregister the shard from the manager
             try
             {
-                await _shardManager.UnregisterShardAsync(shard, _cts.Token);
+                // Caller decides deletion policy based on job count
+                var jobCount = await shard.GetJobCountAsync();
+                bool shouldDelete = (jobCount == 0);
+                
+                await _shardManager.UnregisterShardAsync(shard.Storage, shouldDelete, _cts.Token);
                 LogUnregisteredShard(_logger, shard.Id);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -335,7 +357,7 @@ internal partial class LocalDurableJobManager : SystemTarget, ILocalDurableJobMa
         }
     }
 
-    private bool ShouldStartShardNow(IJobShard shard)
+    private bool ShouldStartShardNow(JobShard shard)
     {
         var activationTime = shard.StartTime.Subtract(_options.ShardActivationBufferPeriod);
         return DateTimeOffset.UtcNow >= activationTime;

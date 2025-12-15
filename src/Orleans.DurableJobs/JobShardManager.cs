@@ -29,30 +29,35 @@ public abstract class JobShardManager
     }
 
     /// <summary>
-    /// Assigns orphaned job shards to this silo.
+    /// Assigns orphaned job shard storage to this silo.
     /// </summary>
     /// <param name="maxDueTime">Maximum due time for shards to consider.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A list of job shards assigned to this silo.</returns>
-    public abstract Task<List<IJobShard>> AssignJobShardsAsync(DateTimeOffset maxDueTime, CancellationToken cancellationToken);
+    /// <returns>A list of job shard storage instances assigned to this silo.</returns>
+    public abstract Task<List<IJobShardStorage>> AssignJobShardsAsync(DateTimeOffset maxDueTime, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Creates a new job shard owned by this silo.
+    /// Creates a new job shard storage owned by this silo.
     /// </summary>
     /// <param name="minDueTime">The minimum due time for jobs in this shard.</param>
     /// <param name="maxDueTime">The maximum due time for jobs in this shard.</param>
     /// <param name="metadata">Optional metadata for the shard.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The newly created job shard.</returns>
-    public abstract Task<IJobShard> CreateShardAsync(DateTimeOffset minDueTime, DateTimeOffset maxDueTime, IDictionary<string, string> metadata, CancellationToken cancellationToken);
+    /// <returns>The newly created job shard storage.</returns>
+    public abstract Task<IJobShardStorage> CreateShardAsync(DateTimeOffset minDueTime, DateTimeOffset maxDueTime, IDictionary<string, string> metadata, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Unregisters a shard owned by this silo.
+    /// Unregisters a shard storage owned by this silo.
     /// </summary>
-    /// <param name="shard">The shard to unregister.</param>
+    /// <param name="storage">The storage instance for the shard to unregister.</param>
+    /// <param name="shouldDelete">
+    /// If true, the shard is deleted completely (recommended when no jobs remain).
+    /// If false, ownership is released so another silo can claim the shard (recommended when jobs remain).
+    /// The caller is responsible for determining whether the shard has remaining jobs.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public abstract Task UnregisterShardAsync(IJobShard shard, CancellationToken cancellationToken);
+    public abstract Task UnregisterShardAsync(IJobShardStorage storage, bool shouldDelete, CancellationToken cancellationToken);
 }
 
 internal class InMemoryJobShardManager : JobShardManager
@@ -87,10 +92,10 @@ internal class InMemoryJobShardManager : JobShardManager
         }
     }
 
-    public override async Task<List<IJobShard>> AssignJobShardsAsync(DateTimeOffset maxDueTime, CancellationToken cancellationToken)
+    public override async Task<List<IJobShardStorage>> AssignJobShardsAsync(DateTimeOffset maxDueTime, CancellationToken cancellationToken)
     {
-        var alreadyOwnedShards = new List<IJobShard>();
-        var stolenShards = new List<IJobShard>();
+        var alreadyOwnedShards = new List<IJobShardStorage>();
+        var stolenShards = new List<IJobShardStorage>();
         
         await _asyncLock.WaitAsync(cancellationToken);
         try
@@ -118,18 +123,18 @@ internal class InMemoryJobShardManager : JobShardManager
                 // Skip shards that are already owned by this silo
                 if (ownership.OwnerSiloAddress == SiloAddress.ToString())
                 {
-                    if (ownership.Shard.StartTime <= maxDueTime)
+                    if (ownership.Storage.StartTime <= maxDueTime)
                     {
-                        alreadyOwnedShards.Add(ownership.Shard);
+                        alreadyOwnedShards.Add(ownership.Storage);
                     }
                 }
                 // Take over orphaned shards or shards from dead silos
                 else if (ownership.OwnerSiloAddress is null || deadSilos.Contains(ownership.OwnerSiloAddress))
                 {
-                    if (ownership.Shard.StartTime <= maxDueTime)
+                    if (ownership.Storage.StartTime <= maxDueTime)
                     {
                         ownership.OwnerSiloAddress = SiloAddress.ToString();
-                        stolenShards.Add(ownership.Shard);
+                        stolenShards.Add(ownership.Storage);
                     }
                 }
             }
@@ -139,16 +144,10 @@ internal class InMemoryJobShardManager : JobShardManager
             _asyncLock.Release();
         }
 
-        foreach (var shard in stolenShards)
-        {
-            // Mark stolen shards as complete
-            await shard.MarkAsCompleteAsync(CancellationToken.None);
-        }
-
         return [.. alreadyOwnedShards, .. stolenShards];
     }
 
-    public override async Task<IJobShard> CreateShardAsync(DateTimeOffset minDueTime, DateTimeOffset maxDueTime, IDictionary<string, string> metadata, CancellationToken cancellationToken)
+    public override async Task<IJobShardStorage> CreateShardAsync(DateTimeOffset minDueTime, DateTimeOffset maxDueTime, IDictionary<string, string> metadata, CancellationToken cancellationToken)
     {
         await _asyncLock.WaitAsync(cancellationToken);
         try
@@ -156,23 +155,21 @@ internal class InMemoryJobShardManager : JobShardManager
             // Generate unique shard ID
             var shardId = $"{SiloAddress}-{Guid.NewGuid()}";
             
-            // Create storage (no-op for in-memory)
-            var storage = new InMemoryJobShardStorage();
-            
-            // Construct shard with storage
-            var shard = new JobShard(shardId, minDueTime, maxDueTime, storage, metadata);
-            
-            // Initialize (loads from storage - no-op for in-memory)
-            await shard.InitializeAsync(cancellationToken);
+            // Create storage with metadata
+            var storage = new InMemoryJobShardStorage(
+                shardId,
+                minDueTime,
+                maxDueTime,
+                metadata);
             
             // Track ownership
             _globalShardStore[shardId] = new ShardOwnership
             {
-                Shard = shard,
+                Storage = storage,
                 OwnerSiloAddress = SiloAddress.ToString()
             };
             
-            return shard;
+            return storage;
         }
         finally
         {
@@ -180,19 +177,17 @@ internal class InMemoryJobShardManager : JobShardManager
         }
     }
 
-    public override async Task UnregisterShardAsync(IJobShard shard, CancellationToken cancellationToken)
+    public override async Task UnregisterShardAsync(IJobShardStorage storage, bool shouldDelete, CancellationToken cancellationToken)
     {
-        var jobCount = await shard.GetJobCountAsync();
-        
         await _asyncLock.WaitAsync(cancellationToken);
         try
         {
             // Only remove shards that have no jobs remaining
-            if (_globalShardStore.TryGetValue(shard.Id, out var ownership))
+            if (_globalShardStore.TryGetValue(storage.ShardId, out var ownership))
             {
-                if (jobCount == 0)
+                if (shouldDelete)
                 {
-                    _globalShardStore.Remove(shard.Id);
+                    _globalShardStore.Remove(storage.ShardId);
                 }
                 else
                 {
@@ -209,7 +204,7 @@ internal class InMemoryJobShardManager : JobShardManager
 
     private sealed class ShardOwnership
     {
-        public required IJobShard Shard { get; init; }
+        public required IJobShardStorage Storage { get; init; }
         public string? OwnerSiloAddress { get; set; }
     }
 }

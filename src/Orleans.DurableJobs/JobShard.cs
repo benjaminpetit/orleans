@@ -104,10 +104,14 @@ public interface IJobShard : IAsyncDisposable
 public sealed class JobShard : IJobShard
 {
     private readonly InMemoryJobQueue _queue;
-    private readonly IJobShardStorage _storage;
     
     /// <inheritdoc/>
     public string Id { get; }
+
+    /// <summary>
+    /// Gets the underlying storage implementation for this shard.
+    /// </summary>
+    public IJobShardStorage Storage { get; }
     
     /// <inheritdoc/>
     public DateTimeOffset StartTime { get; }
@@ -142,7 +146,7 @@ public sealed class JobShard : IJobShard
         EndTime = endTime;
         Metadata = metadata;
         _queue = new InMemoryJobQueue();
-        _storage = storage;
+        Storage = storage;
     }
     
     /// <summary>
@@ -153,7 +157,7 @@ public sealed class JobShard : IJobShard
     /// <exception cref="Exception">Thrown when initialization fails (corrupt data, network issues, etc.).</exception>
     public async Task InitializeAsync(CancellationToken ct)
     {
-        var records = await _storage.LoadAllJobsAsync(ct);
+        var records = await Storage.LoadAllJobsAsync(ct);
         
         foreach (var record in records)
         {
@@ -203,7 +207,7 @@ public sealed class JobShard : IJobShard
         };
         
         // Persist FIRST (fail fast if storage fails)
-        await _storage.AddJobAsync(
+        await Storage.AddJobAsync(
             new JobStorageRecord(jobId, jobName, target, dueTime, metadata, 0),
             cancellationToken);
         
@@ -215,7 +219,7 @@ public sealed class JobShard : IJobShard
     /// <inheritdoc/>
     public async Task<bool> RemoveJobAsync(string jobId, CancellationToken cancellationToken)
     {
-        await _storage.RemoveJobAsync(jobId, cancellationToken);
+        await Storage.RemoveJobAsync(jobId, cancellationToken);
         return _queue.CancelJob(jobId);
     }
     
@@ -233,7 +237,7 @@ public sealed class JobShard : IJobShard
         DateTimeOffset newDueTime,
         CancellationToken cancellationToken)
     {
-        await _storage.UpdateJobDueTimeAsync(
+        await Storage.UpdateJobDueTimeAsync(
             jobContext.Job.Id,
             newDueTime,
             jobContext.DequeueCount,
@@ -244,7 +248,7 @@ public sealed class JobShard : IJobShard
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        await _storage.DisposeAsync();
+        await Storage.DisposeAsync();
         GC.SuppressFinalize(this);
     }
 }
