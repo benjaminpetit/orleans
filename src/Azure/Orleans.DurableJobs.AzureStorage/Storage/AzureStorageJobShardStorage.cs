@@ -1,99 +1,86 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using System.Transactions;
 using Azure;
-using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Blobs.Specialized;
 using Microsoft.Extensions.Logging;
-using Orleans.Hosting;
-using Orleans.Runtime;
+using Orleans.DurableJobs.Storage;
 using Orleans.Serialization.Buffers.Adaptors;
 
-namespace Orleans.DurableJobs.AzureStorage;
+namespace Orleans.DurableJobs.AzureStorage.Storage;
 
-internal sealed partial class AzureStorageJobShard : JobShard
+/// <summary>
+/// Azure Blob Storage implementation for job persistence.
+/// Encapsulates all Azure-specific logic including batching, channels, and append blob operations.
+/// </summary>
+public sealed partial class AzureStorageJobShardStorage : IJobShardStorage
 {
-    private readonly Channel<StorageOperation> _storageOperationChannel;
-    private readonly Task _storageProcessorTask;
+    private readonly AppendBlobClient _blobClient;
+    private readonly Channel<StorageOperation> _operationChannel;
+    private readonly Task _backgroundProcessor;
     private readonly CancellationTokenSource _shutdownCts = new();
     private readonly AzureStorageJobShardOptions _options;
-    private readonly ILogger<AzureStorageJobShard> _logger;
-
-    internal AppendBlobClient BlobClient { get; init; }
-    internal ETag? ETag { get; private set; }
-    internal int CommitedBlockCount { get; private set; }
-
-    public AzureStorageJobShard(string id, DateTimeOffset startTime, DateTimeOffset endTime, AppendBlobClient blobClient, IDictionary<string, string>? metadata, ETag? eTag, AzureStorageJobShardOptions options, ILogger<AzureStorageJobShard> logger)
-        : base(id, startTime, endTime)
+    private readonly ILogger<AzureStorageJobShardStorage> _logger;
+    private readonly string _shardId;
+    private ETag? _etag;
+    
+    /// <summary>
+    /// Gets the number of committed blocks in the append blob.
+    /// This is useful for testing batching behavior.
+    /// </summary>
+    public int CommittedBlockCount { get; private set; }
+    
+    /// <summary>
+    /// Gets the blob client used for storage operations.
+    /// </summary>
+    public AppendBlobClient BlobClient => _blobClient;
+    
+    public AzureStorageJobShardStorage(
+        string shardId,
+        AppendBlobClient blobClient,
+        ETag? initialETag,
+        AzureStorageJobShardOptions options,
+        ILogger<AzureStorageJobShardStorage> logger)
     {
-        BlobClient = blobClient;
-        ETag = eTag;
-        Metadata = metadata;
+        _shardId = shardId;
+        _blobClient = blobClient;
+        _etag = initialETag;
         _options = options;
         _logger = logger;
         
         // Create unbounded channel for storage operations
-        _storageOperationChannel = Channel.CreateUnbounded<StorageOperation>(new UnboundedChannelOptions
+        _operationChannel = Channel.CreateUnbounded<StorageOperation>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false
         });
         
-        // Start the background task that processes storage operations
-        _storageProcessorTask = ProcessStorageOperationsAsync();
+        // Start background processor for batching
+        _backgroundProcessor = ProcessStorageOperationsAsync();
     }
-
-    protected override async Task PersistAddJobAsync(string jobId, string jobName, DateTimeOffset dueTime, GrainId target, IReadOnlyDictionary<string, string>? metadata, CancellationToken cancellationToken)
+    
+    public async Task<IReadOnlyList<JobStorageRecord>> LoadAllJobsAsync(CancellationToken ct)
     {
-        LogAddingJob(_logger, jobId, jobName, Id, dueTime);
-        var operation = JobOperation.CreateAddOperation(jobId, jobName, dueTime, target, metadata);
-        await EnqueueStorageOperationAsync(StorageOperation.CreateAppendOperation(operation), cancellationToken);
-    }
-
-    protected override async Task PersistRemoveJobAsync(string jobId, CancellationToken cancellationToken)
-    {
-        LogRemovingJob(_logger, jobId, Id);
-        var operation = JobOperation.CreateRemoveOperation(jobId);
-        await EnqueueStorageOperationAsync(StorageOperation.CreateAppendOperation(operation), cancellationToken);
-    }
-
-    protected override async Task PersistRetryJobAsync(string jobId, DateTimeOffset newDueTime, CancellationToken cancellationToken)
-    {
-        LogRetryingJob(_logger, jobId, Id, newDueTime);
-        var operation = JobOperation.CreateRetryOperation(jobId, newDueTime);
-        await EnqueueStorageOperationAsync(StorageOperation.CreateAppendOperation(operation), cancellationToken);
-    }
-
-    public async Task UpdateBlobMetadata(IDictionary<string, string> metadata, CancellationToken cancellationToken)
-    {
-        LogUpdatingMetadata(_logger, Id);
-        await EnqueueStorageOperationAsync(StorageOperation.CreateMetadataOperation(metadata), cancellationToken);
-    }
-
-    public async ValueTask InitializeAsync(CancellationToken cancellationToken)
-    {
-        LogInitializingShard(_logger, Id);
+        LogInitializing(_logger, _shardId);
         var sw = Stopwatch.StartNew();
         
-        // Load existing blob
-        var response = await BlobClient.DownloadAsync(cancellationToken: cancellationToken);
+        // Download blob content
+        var response = await _blobClient.DownloadAsync(cancellationToken: ct);
         using var stream = response.Value.Content;
-
-        // Rebuild state by replaying operations
+        
+        // Replay operations to reconstruct state
         var addedJobs = new Dictionary<string, JobOperation>();
         var deletedJobs = new HashSet<string>();
-        var jobRetryCounters = new Dictionary<string, (int dequeueCount, DateTimeOffset? newDueTime)>();
-
-        await foreach (var operation in NetstringJsonSerializer<JobOperation>.DecodeAsync(stream, JobOperationJsonContext.Default.JobOperation, cancellationToken))
+        var jobRetryInfo = new Dictionary<string, (int dequeueCount, DateTimeOffset? newDueTime)>();
+        
+        await foreach (var operation in NetstringJsonSerializer<JobOperation>.DecodeAsync(
+            stream, 
+            JobOperationJsonContext.Default.JobOperation, 
+            ct))
         {
             switch (operation.Type)
             {
@@ -103,121 +90,159 @@ internal sealed partial class AzureStorageJobShard : JobShard
                         addedJobs[operation.Id] = operation;
                     }
                     break;
+                    
                 case JobOperation.OperationType.Remove:
                     deletedJobs.Add(operation.Id);
                     addedJobs.Remove(operation.Id);
-                    jobRetryCounters.Remove(operation.Id);
+                    jobRetryInfo.Remove(operation.Id);
                     break;
+                    
                 case JobOperation.OperationType.Retry:
                     if (!deletedJobs.Contains(operation.Id))
                     {
-                        if (!jobRetryCounters.ContainsKey(operation.Id))
+                        if (!jobRetryInfo.ContainsKey(operation.Id))
                         {
-                            jobRetryCounters[operation.Id] = (1, operation.DueTime);
+                            jobRetryInfo[operation.Id] = (1, operation.DueTime);
                         }
                         else
                         {
-                            var entry = jobRetryCounters[operation.Id];
-                            jobRetryCounters[operation.Id] = (entry.dequeueCount + 1, operation.DueTime);
+                            var entry = jobRetryInfo[operation.Id];
+                            jobRetryInfo[operation.Id] = (entry.dequeueCount + 1, operation.DueTime);
                         }
                     }
                     break;
             }
         }
-
-        // Rebuild the priority queue
+        
+        // Convert to JobStorageRecord list
+        var records = new List<JobStorageRecord>();
         foreach (var op in addedJobs.Values)
         {
-            var retryCounter = 0;
+            var dequeueCount = 0;
             var dueTime = op.DueTime!.Value;
-            if (jobRetryCounters.TryGetValue(op.Id, out var retryEntries))
+            
+            if (jobRetryInfo.TryGetValue(op.Id, out var retryEntry))
             {
-                retryCounter = retryEntries.dequeueCount;
-                dueTime = retryEntries.newDueTime ?? dueTime;
+                dequeueCount = retryEntry.dequeueCount;
+                dueTime = retryEntry.newDueTime ?? dueTime;
             }
-
-            EnqueueJob(new DurableJob
-            {
-                Id = op.Id,
-                Name = op.Name!,
-                DueTime = dueTime,
-                TargetGrainId = op.TargetGrainId!.Value,
-                ShardId = Id,
-                Metadata = op.Metadata,
-            },
-            retryCounter);
+            
+            records.Add(new JobStorageRecord(
+                op.Id,
+                op.Name!,
+                op.TargetGrainId!.Value,
+                dueTime,
+                op.Metadata,
+                dequeueCount));
         }
-
-        ETag = response.Value.Details.ETag;
+        
+        _etag = response.Value.Details.ETag;
         
         sw.Stop();
-        LogShardInitialized(_logger, Id, addedJobs.Count, sw.ElapsedMilliseconds);
+        LogInitialized(_logger, _shardId, records.Count, sw.ElapsedMilliseconds);
+        
+        return records;
     }
-
-    private async Task EnqueueStorageOperationAsync(StorageOperation operation, CancellationToken cancellationToken)
+    
+    public async Task AddJobAsync(JobStorageRecord record, CancellationToken ct)
     {
-        await _storageOperationChannel.Writer.WriteAsync(operation, cancellationToken);
+        LogAddingJob(_logger, record.JobId, record.JobName, _shardId, record.DueTime);
+        var operation = JobOperation.CreateAddOperation(
+            record.JobId,
+            record.JobName,
+            record.DueTime,
+            record.TargetGrainId,
+            record.Metadata);
+        await EnqueueAndWaitAsync(StorageOperation.CreateAppendOperation(operation), ct);
+    }
+    
+    public async Task RemoveJobAsync(string jobId, CancellationToken ct)
+    {
+        LogRemovingJob(_logger, jobId, _shardId);
+        var operation = JobOperation.CreateRemoveOperation(jobId);
+        await EnqueueAndWaitAsync(StorageOperation.CreateAppendOperation(operation), ct);
+    }
+    
+    public async Task UpdateJobDueTimeAsync(string jobId, DateTimeOffset newDueTime, int newDequeueCount, CancellationToken ct)
+    {
+        LogRetryingJob(_logger, jobId, _shardId, newDueTime);
+        var operation = JobOperation.CreateRetryOperation(jobId, newDueTime);
+        await EnqueueAndWaitAsync(StorageOperation.CreateAppendOperation(operation), ct);
+    }
+    
+    /// <summary>
+    /// Updates the blob metadata. This is useful for ownership tracking.
+    /// </summary>
+    public async Task UpdateBlobMetadataAsync(IDictionary<string, string> metadata, CancellationToken ct)
+    {
+        LogUpdatingMetadata(_logger, _shardId);
+        await EnqueueAndWaitAsync(StorageOperation.CreateMetadataOperation(metadata), ct);
+    }
+    
+    private async Task EnqueueAndWaitAsync(StorageOperation operation, CancellationToken ct)
+    {
+        await _operationChannel.Writer.WriteAsync(operation, ct);
         await operation.CompletionSource.Task;
     }
-
+    
     private async Task ProcessStorageOperationsAsync()
     {
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.ForceYielding);
-
+        
         var cancellationToken = _shutdownCts.Token;
         // TODO: AppendBlob has a limit of 50,000 blocks. Implement blob rotation when this limit is approached.
         var batchOperations = new List<StorageOperation>(_options.MaxBatchSize);
         
         try
         {
-            while (await _storageOperationChannel.Reader.WaitToReadAsync(cancellationToken))
+            while (await _operationChannel.Reader.WaitToReadAsync(cancellationToken))
             {
                 // Read first operation
-                if (!_storageOperationChannel.Reader.TryRead(out var firstOperation))
+                if (!_operationChannel.Reader.TryRead(out var firstOperation))
                 {
                     continue;
                 }
-
+                
                 // Handle metadata operations immediately (cannot be batched)
                 if (firstOperation.Type is StorageOperationType.UpdateMetadata)
                 {
                     try
                     {
-                        await UpdateMetadataAsync(firstOperation.Metadata!, cancellationToken);
-                        LogMetadataUpdated(_logger, Id);
+                        await UpdateMetadataInternalAsync(firstOperation.Metadata!, cancellationToken);
+                        LogMetadataUpdated(_logger, _shardId);
                         firstOperation.CompletionSource.TrySetResult();
                     }
                     catch (Exception ex)
                     {
-                        LogErrorUpdatingMetadata(_logger, ex, Id);
+                        LogErrorUpdatingMetadata(_logger, ex, _shardId);
                         firstOperation.CompletionSource?.TrySetException(ex);
                     }
                     continue;
                 }
-
+                
                 // Collect job operations for batching
                 batchOperations.Add(firstOperation);
-
+                
                 // Try to collect more operations up to the maximum batch size
                 if (TryCollectJobOperationsForBatch(batchOperations))
                 {
                     // Not enough operations to meet the minimum batch size, wait for more or timeout
                     if (batchOperations.Count < _options.MinBatchSize)
                     {
-                        LogWaitingForBatch(_logger, batchOperations.Count, _options.MinBatchSize, Id);
+                        LogWaitingForBatch(_logger, batchOperations.Count, _options.MinBatchSize, _shardId);
                     }
                     await Task.Delay(_options.BatchFlushInterval, cancellationToken);
                     TryCollectJobOperationsForBatch(batchOperations);
                 }
-
+                
                 // Process the batch of job operations
                 if (batchOperations.Count > 0)
                 {
                     try
                     {
-                        LogFlushingBatch(_logger, batchOperations.Count, Id);
+                        LogFlushingBatch(_logger, batchOperations.Count, _shardId);
                         await AppendJobOperationBatchAsync(batchOperations, cancellationToken);
-
+                        
                         // Mark all operations as completed
                         foreach (var op in batchOperations)
                         {
@@ -226,7 +251,7 @@ internal sealed partial class AzureStorageJobShard : JobShard
                     }
                     catch (Exception ex)
                     {
-                        LogErrorWritingBatch(_logger, ex, batchOperations.Count, Id);
+                        LogErrorWritingBatch(_logger, ex, batchOperations.Count, _shardId);
                         
                         // Mark all operations as failed
                         foreach (var op in batchOperations)
@@ -243,36 +268,36 @@ internal sealed partial class AzureStorageJobShard : JobShard
         }
         catch (OperationCanceledException)
         {
-            // Ignore
+            // Expected during shutdown
         }
         finally
         {
-            // Expected during shutdown - cancel all pending operations
-            while (_storageOperationChannel.Reader.TryRead(out var operation))
+            // Cancel all pending operations
+            while (_operationChannel.Reader.TryRead(out var operation))
             {
                 operation.CompletionSource?.TrySetCanceled(cancellationToken);
             }
         }
-
+        
         // Local function to collect job operations for batching. Returns true if more operations can be collected.
         bool TryCollectJobOperationsForBatch(List<StorageOperation> batchOperations)
         {
             // Collect more jobs, up to a maximum batch size
-            while (batchOperations.Count < _options.MaxBatchSize && _storageOperationChannel.Reader.TryPeek(out var nextOperation))
+            while (batchOperations.Count < _options.MaxBatchSize && _operationChannel.Reader.TryPeek(out var nextOperation))
             {
                 if (nextOperation.Type is StorageOperationType.UpdateMetadata)
                 {
                     // Stop batching if we encounter a metadata operation
                     return false;
                 }
-                _storageOperationChannel.Reader.TryRead(out var operation);
+                _operationChannel.Reader.TryRead(out var operation);
                 Debug.Assert(operation != null);
                 batchOperations.Add(operation!);
             }
             return batchOperations.Count != _options.MaxBatchSize;
         }
     }
-
+    
     private async Task AppendJobOperationBatchAsync(List<StorageOperation> operations, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
@@ -286,28 +311,28 @@ internal sealed partial class AzureStorageJobShard : JobShard
             {
                 NetstringJsonSerializer<JobOperation>.Encode(operation.JobOperation!.Value, stream, JobOperationJsonContext.Default.JobOperation);
             }
-            var str = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+            
             stream.Position = 0;
-            var result = await BlobClient.AppendBlockAsync(
+            var result = await _blobClient.AppendBlockAsync(
                 stream,
-                new AppendBlobAppendBlockOptions { Conditions = new AppendBlobRequestConditions { IfMatch = ETag } },
+                new AppendBlobAppendBlockOptions { Conditions = new AppendBlobRequestConditions { IfMatch = _etag } },
                 cancellationToken);
-            ETag = result.Value.ETag;
-            CommitedBlockCount = result.Value.BlobCommittedBlockCount;
+            _etag = result.Value.ETag;
+            CommittedBlockCount = result.Value.BlobCommittedBlockCount;
             
             sw.Stop();
-            LogBatchWritten(_logger, operations.Count, Id, sw.ElapsedMilliseconds, CommitedBlockCount);
+            LogBatchWritten(_logger, operations.Count, _shardId, sw.ElapsedMilliseconds, CommittedBlockCount);
             
             // Warn if approaching the 50,000 block limit (warn at 80%)
-            if (CommitedBlockCount > 40000)
+            if (CommittedBlockCount > 40000)
             {
-                LogApproachingBlockLimit(_logger, Id, CommitedBlockCount);
+                LogApproachingBlockLimit(_logger, _shardId, CommittedBlockCount);
             }
             
             // Warn if batch is unusually large
             if (operations.Count > _options.MaxBatchSize * 0.8)
             {
-                LogLargeBatch(_logger, Id, operations.Count, _options.MaxBatchSize);
+                LogLargeBatch(_logger, _shardId, operations.Count, _options.MaxBatchSize);
             }
         }
         finally
@@ -315,50 +340,37 @@ internal sealed partial class AzureStorageJobShard : JobShard
             PooledBufferStream.Return(stream);
         }
     }
-
-    private async Task UpdateMetadataAsync(IDictionary<string, string> metadata, CancellationToken cancellationToken)
+    
+    private async Task UpdateMetadataInternalAsync(IDictionary<string, string> metadata, CancellationToken cancellationToken)
     {
-        var result = await BlobClient.SetMetadataAsync(
+        var result = await _blobClient.SetMetadataAsync(
             metadata,
-            new BlobRequestConditions { IfMatch = ETag },
+            new BlobRequestConditions { IfMatch = _etag },
             cancellationToken);
-        ETag = result.Value.ETag;
-        Metadata = metadata;
+        _etag = result.Value.ETag;
     }
-
-    /// <summary>
-    /// Stops the background storage processor and waits for all pending operations to complete.
-    /// After calling this method, no new storage operations can be enqueued.
-    /// This method is idempotent and can be called multiple times safely.
-    /// </summary>
-    internal async Task StopProcessorAsync(CancellationToken cancellationToken)
+    
+    public async ValueTask DisposeAsync()
     {
-        LogStoppingProcessor(_logger, Id);
+        LogStoppingProcessor(_logger, _shardId);
         
-        // Complete the channel to stop accepting new operations (idempotent operation)
-        if (_storageOperationChannel.Writer.TryComplete())
-        {
-            _shutdownCts.Cancel();
-        }
-
-        // Wait for the background processor to finish all pending operations
+        // Complete channel and signal shutdown
+        _operationChannel.Writer.TryComplete();
+        _shutdownCts.Cancel();
+        
+        // Wait for background processor to finish
         try
         {
-            await _storageProcessorTask.WaitAsync(cancellationToken);
-            LogProcessorStopped(_logger, Id);
+            await _backgroundProcessor;
+            LogProcessorStopped(_logger, _shardId);
         }
         catch (OperationCanceledException)
         {
-            // Expected during normal shutdown
-            LogProcessorStopped(_logger, Id);
+            // Expected during shutdown
+            LogProcessorStopped(_logger, _shardId);
         }
-    }
-
-    public override async ValueTask DisposeAsync()
-    {
-        await StopProcessorAsync(CancellationToken.None);
+        
         _shutdownCts.Dispose();
-        await base.DisposeAsync();
     }
 }
 
@@ -374,7 +386,7 @@ internal sealed class StorageOperation
     public JobOperation? JobOperation { get; init; }
     public IDictionary<string, string>? Metadata { get; init; }
     public TaskCompletionSource CompletionSource { get; init; } = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
+    
     public static StorageOperation CreateAppendOperation(JobOperation jobOperation)
     {
         return new StorageOperation
@@ -383,7 +395,7 @@ internal sealed class StorageOperation
             JobOperation = jobOperation
         };
     }
-
+    
     public static StorageOperation CreateMetadataOperation(IDictionary<string, string> metadata)
     {
         return new StorageOperation

@@ -11,6 +11,7 @@ using Orleans.Hosting;
 using Orleans.Runtime;
 using Orleans.DurableJobs;
 using Orleans.DurableJobs.AzureStorage;
+using Orleans.DurableJobs.AzureStorage.Storage;
 using Tester.AzureUtils;
 using Xunit;
 
@@ -106,8 +107,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         await Task.Delay(TimeSpan.FromMilliseconds(300));
 
         // Verify batching occurred - should have fewer committed blocks than individual operations
-        var azureShard = (AzureStorageJobShard)shard;
-        Assert.True(azureShard.CommitedBlockCount < 10, $"Expected batching to reduce block count, but got {azureShard.CommitedBlockCount}");
+        var storage = manager.GetShardStorageForTesting(shard.Id);
+        Assert.NotNull(storage);
+        Assert.True(storage.CommittedBlockCount < 10, $"Expected batching to reduce block count, but got {storage.CommittedBlockCount}");
 
         // Verify all jobs were persisted by marking silo as dead and reassigning
         SetSiloStatus(localAddress, SiloStatus.Dead);
@@ -154,8 +156,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         await Task.WhenAll(tasks);
 
         // Verify that the partial batch was flushed - should have 1 committed block
-        var azureShard = (AzureStorageJobShard)shard;
-        Assert.Equal(1, azureShard.CommitedBlockCount);
+        var storage = manager.GetShardStorageForTesting(shard.Id);
+        Assert.NotNull(storage);
+        Assert.Equal(1, storage.CommittedBlockCount);
 
         // Verify jobs were persisted despite not reaching MinBatchSize
         SetSiloStatus(localAddress, SiloStatus.Dead);
@@ -207,8 +210,9 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
 
         // Verify multiple batches were created due to MaxBatchSize limit
         // With 50 jobs and MaxBatchSize=20, expect at least 3 blocks (50/20 = 2.5, rounded up)
-        var azureShard = (AzureStorageJobShard)shard;
-        Assert.True(azureShard.CommitedBlockCount >= 3, $"Expected at least 3 blocks for 50 jobs with MaxBatchSize=20, but got {azureShard.CommitedBlockCount}");
+        var storage = manager.GetShardStorageForTesting(shard.Id);
+        Assert.NotNull(storage);
+        Assert.True(storage.CommittedBlockCount >= 3, $"Expected at least 3 blocks for 50 jobs with MaxBatchSize=20, but got {storage.CommittedBlockCount}");
 
         // Verify all jobs were persisted (should be split into multiple batches)
         SetSiloStatus(localAddress, SiloStatus.Dead);
@@ -257,18 +261,19 @@ public class AzureStorageJobShardBatchingTests : AzureStorageBasicTests, IAsyncD
         await Task.Delay(50);
 
         // Verify no blocks committed yet (batch still pending)
-        var azureShard = (AzureStorageJobShard)shard;
-        var blockCountBefore = azureShard.CommitedBlockCount;
+        var storage = manager.GetShardStorageForTesting(shard.Id);
+        Assert.NotNull(storage);
+        var blockCountBefore = storage.CommittedBlockCount;
 
         // Update metadata (should flush pending batch and process immediately)
         var newMetadata = new Dictionary<string, string>(shard.Metadata) { ["Updated"] = "true" };
-        await azureShard.UpdateBlobMetadata(newMetadata, CancellationToken.None);
+        await storage.UpdateBlobMetadataAsync(newMetadata, CancellationToken.None);
 
         Assert.All(tasks, t => Assert.True(t.IsCompletedSuccessfully, "Expected all job scheduling tasks to complete successfully"));
-        Assert.True(azureShard.CommitedBlockCount > blockCountBefore, "Expected metadata update to flush pending batch");
+        Assert.True(storage.CommittedBlockCount > blockCountBefore, "Expected metadata update to flush pending batch");
 
         // Verify metadata was updated
-        var props = await azureShard.BlobClient.GetPropertiesAsync();
+        var props = await storage.BlobClient.GetPropertiesAsync();
         Assert.True(props.Value.Metadata.ContainsKey("Updated"));
         Assert.Equal("true", props.Value.Metadata["Updated"]);
 

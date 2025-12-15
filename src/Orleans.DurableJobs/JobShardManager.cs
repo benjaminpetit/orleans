@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Orleans.DurableJobs.Storage;
 using Orleans.Runtime;
 
 namespace Orleans.DurableJobs;
@@ -152,16 +153,26 @@ internal class InMemoryJobShardManager : JobShardManager
         await _asyncLock.WaitAsync(cancellationToken);
         try
         {
+            // Generate unique shard ID
             var shardId = $"{SiloAddress}-{Guid.NewGuid()}";
-            var newShard = new InMemoryJobShard(shardId, minDueTime, maxDueTime, metadata);
             
+            // Create storage (no-op for in-memory)
+            var storage = new InMemoryJobShardStorage();
+            
+            // Construct shard with storage
+            var shard = new JobShard(shardId, minDueTime, maxDueTime, storage, metadata);
+            
+            // Initialize (loads from storage - no-op for in-memory)
+            await shard.InitializeAsync(cancellationToken);
+            
+            // Track ownership
             _globalShardStore[shardId] = new ShardOwnership
             {
-                Shard = newShard,
+                Shard = shard,
                 OwnerSiloAddress = SiloAddress.ToString()
             };
             
-            return newShard;
+            return shard;
         }
         finally
         {

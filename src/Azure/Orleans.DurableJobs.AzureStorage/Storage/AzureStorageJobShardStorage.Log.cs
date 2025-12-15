@@ -1,21 +1,21 @@
 using System;
 using Microsoft.Extensions.Logging;
 
-namespace Orleans.DurableJobs.AzureStorage;
+namespace Orleans.DurableJobs.AzureStorage.Storage;
 
-internal sealed partial class AzureStorageJobShard
+public sealed partial class AzureStorageJobShardStorage
 {
     [LoggerMessage(
         Level = LogLevel.Information,
         Message = "Initializing shard '{ShardId}' from Azure Storage blob"
     )]
-    private static partial void LogInitializingShard(ILogger logger, string shardId);
+    private static partial void LogInitializing(ILogger logger, string shardId);
 
     [LoggerMessage(
         Level = LogLevel.Information,
         Message = "Shard '{ShardId}' initialized successfully. Loaded {JobCount} job(s) in {ElapsedMilliseconds}ms"
     )]
-    private static partial void LogShardInitialized(ILogger logger, string shardId, int jobCount, long elapsedMilliseconds);
+    private static partial void LogInitialized(ILogger logger, string shardId, int jobCount, long elapsedMilliseconds);
 
     [LoggerMessage(
         Level = LogLevel.Debug,
@@ -94,12 +94,6 @@ internal sealed partial class AzureStorageJobShard
         Message = "Storage processor stopped for shard '{ShardId}'"
     )]
     private static partial void LogProcessorStopped(ILogger logger, string shardId);
-
-    [LoggerMessage(
-        Level = LogLevel.Trace,
-        Message = "Processing storage operation queue for shard '{ShardId}'"
-    )]
-    private static partial void LogProcessingStorageQueue(ILogger logger, string shardId);
 
     [LoggerMessage(
         Level = LogLevel.Debug,
